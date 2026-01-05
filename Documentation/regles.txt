@@ -1,0 +1,59 @@
+.
+
+🃏 RÈGLES OFFICIELLES : CAMBIO (KILLE CARD GAME)
+1. Objectif
+Avoir le total de points le plus faible devant soi à la fin de la manche.
+
+2. Valeur des Points
+Roi de Cœur : -1 point (la meilleure carte)
+
+As : 1 point
+
+2 à 10 : Valeur indiquée sur la carte
+
+Valet : 11 points
+
+Dame : 12 points
+
+Autres Rois (Pique, Trèfle, Carreau) : 13 points
+
+3. Mise en place
+Chaque joueur reçoit 4 cartes face cachée, disposées en carré (2x2).
+
+Au début de la partie, chaque joueur regarde 2 de ses cartes (et les mémorise), puis les repose face cachée.
+
+Le reste forme la Pioche. La première carte retournée à côté forme la Défausse.
+
+4. Déroulement d'un tour
+Le joueur doit obligatoirement :
+
+Piocher une carte (soit dans la Pioche, soit la carte visible de la Défausse).
+
+Choisir une action :
+
+Échanger : Remplacer l'une de ses 4 cartes cachées par la carte piochée. La vieille carte va dans la défausse.
+
+Défausser : Poser la carte piochée directement dans la défausse (impossible si elle vient de la défausse).
+
+5. Cartes Spéciales (Pouvoirs)
+Les pouvoirs ne s'activent que si le joueur pioche la carte et la pose immédiatement dans la défausse.
+
+8, 9 ou 10 : Permet de regarder l'une de ses propres cartes (Peek).
+
+Valet : Permet d'échanger deux cartes sur la table (entre deux joueurs ou chez soi) sans les regarder.
+
+Dame : Permet de regarder une carte adverse, puis de l'échanger (ou non) avec l'une des siennes.
+
+6. Fin de la Manche : "CAMBIO"
+Lorsqu'un joueur pense avoir le score le plus bas, il annonce "Cambio" à la fin de son tour.
+
+Tous les autres joueurs disposent d'un dernier tour de jeu.
+
+Toutes les cartes sont révélées et on compte les points.
+
+7. Calcul du Score et Pénalité
+Le joueur avec le score le plus bas gagne la manche (0 point marqué).
+
+Pénalité de l'annonceur : Si le joueur qui a dit "Cambio" n'a pas le score le plus bas (ou est ex-aequo), il reçoit son score actuel + 20 points de pénalité.
+
+Fin de partie : Le premier joueur à atteindre 100 points a perdu. Le joueur avec le moins de points gagne la partie.
