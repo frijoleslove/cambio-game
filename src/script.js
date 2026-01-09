@@ -462,31 +462,65 @@ function defausserCartePiochee() {
  * NOUVEAU : Active la fenêtre doublon (3 secondes)
  */
 function activerFenetreDoublon(valeur) {
+    // SÉCURITÉ : Ne pas activer si pas de valeur ou si partie terminée
+    if (!valeur || partieTerminee) {
+        finirTour();
+        return;
+    }
+    
+    console.log(`⚡ Activation fenêtre doublon pour : ${valeur}`);
+    
     fenetreDoublonActive = true;
     valeurDoublon = valeur;
     
     updateMessage(`⚡ DOUBLON ! Si vous avez un ${valeur}, cliquez sur votre carte (3 secondes) !`);
     afficherPlateau();
     
-    // Timer de 3 secondes
+    // CORRECTION : S'assurer que l'ancien countdown est supprimé
+    const oldCountdown = document.getElementById('doublon-countdown');
+    if (oldCountdown) {
+        oldCountdown.remove();
+    }
+    
+    // Timer de 3 secondes avec bouton Passer
     let countdown = 3;
     const countdownDiv = document.createElement('div');
     countdownDiv.id = 'doublon-countdown';
-    countdownDiv.style.cssText = 'position:fixed;top:20px;right:20px;background:#ff4444;color:white;padding:20px;border-radius:10px;font-size:2em;font-weight:bold;z-index:1500;';
-    countdownDiv.textContent = countdown;
+    countdownDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.95);color:white;padding:40px 60px;border-radius:20px;font-size:4em;font-weight:bold;z-index:9999;box-shadow:0 10px 50px rgba(0,0,0,0.8);text-align:center;';
+    countdownDiv.innerHTML = `
+        <div style="font-size:4em;margin-bottom:20px;color:#ff4444;">${countdown}</div>
+        <div style="font-size:0.5em;margin-bottom:15px;">Carte défaussée: ${valeur}</div>
+        <button id="btn-passer-doublon" style="font-size:0.4em;padding:10px 30px;background:#666;color:white;border:none;border-radius:10px;cursor:pointer;margin-top:10px;">Passer</button>
+    `;
     document.body.appendChild(countdownDiv);
+    
+    // Bouton passer
+    document.getElementById('btn-passer-doublon').addEventListener('click', () => {
+        console.log('👆 Utilisateur a cliqué sur Passer');
+        clearInterval(countdownInterval);
+        fermerFenetreDoublon();
+    });
     
     const countdownInterval = setInterval(() => {
         countdown--;
-        countdownDiv.textContent = countdown;
+        const countdownDisplay = countdownDiv.querySelector('div');
+        if (countdownDisplay) {
+            countdownDisplay.textContent = countdown;
+        }
         if (countdown <= 0) {
             clearInterval(countdownInterval);
         }
     }, 1000);
     
+    // CORRECTION : S'assurer que le timer précédent est annulé
+    if (timerDoublon) {
+        clearTimeout(timerDoublon);
+    }
+    
     timerDoublon = setTimeout(() => {
+        console.log('⏰ Timer doublon terminé automatiquement');
+        clearInterval(countdownInterval);
         fermerFenetreDoublon();
-        document.getElementById('doublon-countdown')?.remove();
     }, 3000);
 }
 
@@ -550,9 +584,22 @@ function tenterDoublon(index, joueur) {
  * NOUVEAU : Ferme la fenêtre doublon
  */
 function fermerFenetreDoublon() {
+    console.log('🔒 Fermeture de la fenêtre doublon');
+    
     fenetreDoublonActive = false;
     valeurDoublon = null;
-    clearTimeout(timerDoublon);
+    
+    if (timerDoublon) {
+        clearTimeout(timerDoublon);
+        timerDoublon = null;
+    }
+    
+    // Supprimer le countdown
+    const countdown = document.getElementById('doublon-countdown');
+    if (countdown) {
+        countdown.remove();
+    }
+    
     afficherPlateau();
     
     // Continuer le jeu normalement
