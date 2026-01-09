@@ -1,13 +1,81 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="script.js"></script>
-    <link rel="stylesheet" href="styles.css">
-    <title>Document</title>
+    <link rel="stylesheet" href="style.css">
+    <title>Cambio - Kille Card Game</title>
 </head>
 <body>
-    
+    <div class="game-container">
+        <!-- En-tête -->
+        <header class="game-header">
+            <h1>🎴 CAMBIO</h1>
+            <div class="score-display">
+                <span>Score actuel: <strong id="current-score">0</strong> pts</span>
+            </div>
+        </header>
+
+        <!-- Message d'instruction -->
+        <div id="game-message" class="game-message">
+            Sélectionnez 2 cartes à mémoriser au début de la partie
+        </div>
+
+        <!-- Joueur 2 (en haut) -->
+        <div class="player-section opponent">
+            <h2>Joueur 2 <span id="player2-indicator" class="turn-indicator"></span></h2>
+            <div id="player2-hand" class="player-hand">
+                <!-- Les 4 cartes du Joueur 2 -->
+            </div>
+            <div class="score-display-small">Score: <strong id="player2-score">0</strong> pts</div>
+        </div>
+
+        <!-- Zone centrale : Pioche et Défausse -->
+        <div class="center-area">
+            <div class="deck-container">
+                <div id="pioche" class="deck pioche">
+                    <div class="card card-back">
+                        <div class="card-pattern"></div>
+                    </div>
+                    <span class="deck-count" id="pioche-count">47</span>
+                </div>
+                <div class="deck-label">PIOCHE</div>
+            </div>
+
+            <div class="deck-container">
+                <div id="defausse" class="deck defausse">
+                    <!-- La carte de défausse sera ajoutée ici -->
+                </div>
+                <div class="deck-label">DÉFAUSSE</div>
+            </div>
+        </div>
+
+        <!-- Main du joueur -->
+        <div class="player-section current-player">
+            <h2>Joueur 1 <span id="player1-indicator" class="turn-indicator active">← Votre tour</span></h2>
+            <div id="player-hand" class="player-hand">
+                <!-- Les 4 cartes du joueur seront générées ici -->
+            </div>
+            <div class="score-display-small">Score: <strong id="player1-score">0</strong> pts</div>
+        </div>
+
+        <!-- Boutons d'action -->
+        <div class="actions">
+            <button id="btn-nouvelle-partie" class="btn btn-primary">Nouvelle Partie</button>
+            <button id="btn-cambio" class="btn btn-warning" style="display:none;">Annoncer CAMBIO!</button>
+            <button id="btn-passer-tour" class="btn btn-secondary" style="display:none;">Passer le tour</button>
+        </div>
+    </div>
+
+    <!-- Écran de transition entre les tours -->
+    <div id="turn-transition" class="turn-transition" style="display:none;">
+        <div class="transition-content">
+            <h1 id="transition-title">Au tour du Joueur 2</h1>
+            <p id="transition-message">Passez l'appareil au Joueur 2</p>
+            <button id="btn-start-turn" class="btn btn-primary btn-large">Commencer mon tour</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
 </body>
 </html>
