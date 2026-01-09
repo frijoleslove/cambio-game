@@ -1,6 +1,5 @@
 // ============================================
 // CAMBIO - MULTIJOUEUR LOCAL (2 JOUEURS)
-// Version corrigée avec règles authentiques
 // ============================================
 
 const COULEURS = ['coeur', 'carreau', 'trefle', 'pique'];
@@ -28,7 +27,12 @@ let effetSpecialActif = null;
 // État du Cambio
 let cambioAnnonce = false;
 let joueurCambio = null;
-let dernierTour = false;
+let partieTerminee = false; // NOUVEAU : Pour garder les cartes affichées
+
+// État des doublons
+let fenetreDoublonActive = false;
+let valeurDoublon = null;
+let timerDoublon = null;
 
 /**
  * Calcule les points d'une carte
@@ -71,12 +75,12 @@ function melangerDeck(deck) {
 
 /**
  * Distribue les cartes aux 2 joueurs
- * RÈGLE MODIFIÉE : La défausse commence VIDE
+ * NOUVEAU : Pas de carte dans la défausse au début
  */
 function distribuerCartes() {
     mainJoueur1 = [];
     mainJoueur2 = [];
-    defausse = []; // VIDE au début !
+    defausse = []; // Défausse vide au début
     pioche = [...deck];
     
     // 4 cartes pour chaque joueur
@@ -85,8 +89,8 @@ function distribuerCartes() {
         mainJoueur2.push(pioche.pop());
     }
     
-    // PAS de carte dans la défausse au début
-    console.log(`🎴 Distribution : J1 = ${mainJoueur1.length}, J2 = ${mainJoueur2.length}, Pioche = ${pioche.length}, Défausse = VIDE`);
+    // PAS de carte dans la défausse
+    console.log(`🎴 Distribution : J1 = ${mainJoueur1.length}, J2 = ${mainJoueur2.length}, Pioche = ${pioche.length}, Défausse = ${defausse.length}`);
 }
 
 /**
@@ -149,18 +153,31 @@ function afficherPlateau() {
 function afficherMainJoueur(joueur) {
     const handDiv = joueur === 1 ? document.getElementById('player-hand') : document.getElementById('player2-hand');
     const main = joueur === 1 ? mainJoueur1 : mainJoueur2;
-    const peekCount = joueur === 1 ? peekCountJ1 : peekCountJ2;
     const cartesVues = joueur === 1 ? cartesVuesJ1 : cartesVuesJ2;
+    const peekCount = joueur === 1 ? peekCountJ1 : peekCountJ2;
     
     handDiv.innerHTML = '';
     
     main.forEach((carte, index) => {
-        const carteDiv = afficherCarte(carte, index, false, joueur);
+        // NOUVEAU : Si la partie est terminée, afficher les cartes face visible
+        const faceVisible = partieTerminee;
+        const carteDiv = afficherCarte(carte, index, faceVisible, joueur);
+        
+        // Si partie terminée, ne pas ajouter d'événements
+        if (partieTerminee) {
+            handDiv.appendChild(carteDiv);
+            return;
+        }
         
         // Phase initiale : peek pour le joueur actif
         if (phaseInitiale && joueur === joueurActif && peekCount < 2) {
             carteDiv.classList.add('peekable');
             carteDiv.addEventListener('click', () => gererPeek(index, joueur));
+        }
+        // Fenêtre doublon active : tous les joueurs peuvent cliquer
+        else if (fenetreDoublonActive) {
+            carteDiv.classList.add('doublon-clickable');
+            carteDiv.addEventListener('click', () => tenterDoublon(index, joueur));
         }
         // Effets spéciaux
         else if (effetSpecialActif && !phaseInitiale) {
@@ -173,19 +190,17 @@ function afficherMainJoueur(joueur) {
                 carteDiv.addEventListener('click', () => selectionnerPourValet(index, joueur));
             }
             else if (effetSpecialActif.type === 'dame') {
-                // Étape 1 : Regarder une carte adverse
                 if (effetSpecialActif.etape === 1 && joueur !== joueurActif) {
                     carteDiv.classList.add('selectable');
-                    carteDiv.addEventListener('click', () => regarderCarteAdverseDame(index, joueur));
+                    carteDiv.addEventListener('click', () => regarderEtEchangerDame(index, joueur));
                 }
-                // Étape 2 : Choisir sa propre carte pour l'échange (optionnel)
                 else if (effetSpecialActif.etape === 2 && joueur === joueurActif) {
-                    carteDiv.classList.add('exchangeable');
-                    carteDiv.addEventListener('click', () => echangerAvecAdverseDame(index));
+                    carteDiv.classList.add('selectable');
+                    carteDiv.addEventListener('click', () => regarderEtEchangerDame(index, joueur));
                 }
             }
         }
-        // Échange normal (après avoir pioché)
+        // Échange normal
         else if (enAttenteAction && cartePiochee && joueur === joueurActif) {
             carteDiv.classList.add('exchangeable');
             carteDiv.addEventListener('click', () => echangerCarte(index));
@@ -202,23 +217,22 @@ function afficherCentrale() {
     // Défausse
     const defausseDiv = document.getElementById('defausse');
     defausseDiv.innerHTML = '';
-    
     if (defausse.length > 0) {
         const carteDefausse = afficherCarte(defausse[defausse.length - 1], -1, true);
         
-        // On peut piocher de la défausse SEULEMENT si elle n'est pas vide
-        // et qu'on n'est pas en phase initiale ou en attente d'action
-        if (!phaseInitiale && !enAttenteAction && !effetSpecialActif) {
+        // NOUVEAU : Ne pas permettre de piocher si partie terminée
+        if (!phaseInitiale && !enAttenteAction && !effetSpecialActif && !fenetreDoublonActive && !partieTerminee) {
             carteDefausse.classList.add('piochable');
             carteDefausse.addEventListener('click', piocherDefausse);
         }
         
         defausseDiv.appendChild(carteDefausse);
     } else {
-        // Défausse vide - afficher un placeholder
+        // Défausse vide : afficher un placeholder
         const placeholder = document.createElement('div');
         placeholder.className = 'card defausse-vide';
-        placeholder.innerHTML = '<span class="placeholder-text">Défausse vide</span>';
+        placeholder.textContent = 'VIDE';
+        placeholder.style.cssText = 'display:flex;align-items:center;justify-content:center;font-size:1.2em;color:#666;border:2px dashed #666;';
         defausseDiv.appendChild(placeholder);
     }
     
@@ -230,7 +244,8 @@ function afficherCentrale() {
         carteDos.className = 'card card-back';
         carteDos.innerHTML = '<div class="card-pattern"></div>';
         
-        if (!phaseInitiale && !enAttenteAction && !effetSpecialActif) {
+        // NOUVEAU : Ne pas permettre de piocher si partie terminée
+        if (!phaseInitiale && !enAttenteAction && !effetSpecialActif && !fenetreDoublonActive && !partieTerminee) {
             carteDos.classList.add('piochable');
             carteDos.addEventListener('click', piocherPioche);
         }
@@ -286,7 +301,7 @@ function gererPeek(index, joueur) {
     }, 3000);
     
     const restant = 2 - (joueur === 1 ? peekCountJ1 : peekCountJ2);
-    updateMessage(`Joueur ${joueur} : Sélectionnez encore ${restant} carte(s) à mémoriser`);
+    updateMessage(`Joueur ${joueur} : Sélectionnez encore ${restant} carte(s)`);
 }
 
 /**
@@ -294,18 +309,16 @@ function gererPeek(index, joueur) {
  */
 function changerJoueurInitial() {
     if (peekCountJ1 >= 2 && peekCountJ2 >= 2) {
-        // Les 2 joueurs ont vu leurs cartes
         setTimeout(() => {
             phaseInitiale = false;
             joueurActif = 1;
             afficherPlateau();
-            updateMessage(`Joueur 1 : Piochez une carte de la pioche pour commencer`);
+            updateMessage(`Joueur 1 : Piochez une carte pour commencer`);
             document.getElementById('btn-cambio').style.display = 'inline-block';
         }, 3500);
     } else if (joueurActif === 1 && peekCountJ1 >= 2) {
-        // J1 a fini, on passe à J2
         setTimeout(() => {
-            afficherTransition(2, "C'est au tour du Joueur 2 de regarder ses 2 cartes");
+            afficherTransition(2, "C'est au tour du Joueur 2 de regarder ses cartes");
         }, 3500);
     }
 }
@@ -332,10 +345,7 @@ function piocherPioche() {
  * Pioche dans la défausse
  */
 function piocherDefausse() {
-    if (defausse.length === 0) {
-        updateMessage("La défausse est vide !");
-        return;
-    }
+    if (defausse.length === 0) return;
     
     cartePiochee = defausse.pop();
     sourceCartePiochee = 'defausse';
@@ -347,7 +357,7 @@ function piocherDefausse() {
 }
 
 /**
- * Affiche la carte piochée avec les options
+ * Affiche la carte piochée
  */
 function afficherCartePiochee() {
     const centerArea = document.querySelector('.center-area');
@@ -362,23 +372,22 @@ function afficherCartePiochee() {
     
     piocheeContainer.innerHTML = '';
     
-    // Afficher la carte piochée (face visible)
     const carteDiv = afficherCarte(cartePiochee, -2, true);
     carteDiv.classList.add('carte-piochee');
     piocheeContainer.appendChild(carteDiv);
     
-    // Boutons d'action
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'carte-piochee-actions';
     
     const btnEchanger = document.createElement('button');
     btnEchanger.className = 'btn btn-exchange';
-    btnEchanger.textContent = '🔄 Échanger avec mon deck';
+    btnEchanger.textContent = '🔄 Échanger';
     btnEchanger.onclick = activerModeEchange;
+    
     actionsDiv.appendChild(btnEchanger);
     
-    // RÈGLE : On ne peut défausser QUE si la carte vient de la pioche
-    if (sourceCartePiochee === 'pioche') {
+    // RÈGLE : On ne peut pas défausser une carte qui vient de la défausse
+    if (sourceCartePiochee !== 'defausse') {
         const btnDefausser = document.createElement('button');
         btnDefausser.className = 'btn btn-discard';
         btnDefausser.textContent = '🗑️ Défausser';
@@ -388,21 +397,10 @@ function afficherCartePiochee() {
     
     piocheeContainer.appendChild(actionsDiv);
     
-    // Message selon la source
     if (sourceCartePiochee === 'defausse') {
-        updateMessage(`Joueur ${joueurActif} : Vous DEVEZ échanger cette carte (impossible de défausser une carte prise de la défausse)`);
+        updateMessage(`Joueur ${joueurActif} : Vous devez échanger cette carte (impossible de défausser une carte de la défausse)`);
     } else {
-        // Indiquer si la carte a un pouvoir
-        const valeur = cartePiochee.valeur;
-        let pouvoirMsg = '';
-        if (['8', '9', '10'].includes(valeur)) {
-            pouvoirMsg = ' | 👁️ Si vous défaussez : regardez une de vos cartes';
-        } else if (valeur === 'Valet') {
-            pouvoirMsg = ' | 🔀 Si vous défaussez : échangez 2 cartes (sans regarder)';
-        } else if (valeur === 'Dame') {
-            pouvoirMsg = ' | 👸 Si vous défaussez : regardez une carte adverse et échangez-la si vous voulez';
-        }
-        updateMessage(`Joueur ${joueurActif} : Échanger ou Défausser ?${pouvoirMsg}`);
+        updateMessage(`Joueur ${joueurActif} : Choisissez Échanger ou Défausser`);
     }
 }
 
@@ -410,12 +408,12 @@ function afficherCartePiochee() {
  * Active le mode échange
  */
 function activerModeEchange() {
-    updateMessage(`Joueur ${joueurActif} : Cliquez sur une de VOS cartes pour l'échanger`);
+    updateMessage(`Joueur ${joueurActif} : Cliquez sur une de vos cartes pour l'échanger`);
     afficherPlateau();
 }
 
 /**
- * Échange la carte piochée avec une carte du deck
+ * Échange la carte piochée
  */
 function echangerCarte(index) {
     const main = getMainActive();
@@ -425,22 +423,29 @@ function echangerCarte(index) {
     
     console.log(`🔄 J${joueurActif} échange : ${cartePiochee.valeur} remplace ${carteRemplacee.valeur}`);
     
-    fermerCartePiochee();
-    finirTour();
+    document.getElementById('carte-piochee-container')?.remove();
+    cartePiochee = null;
+    enAttenteAction = false;
+    
+    // NOUVEAU : Activer la fenêtre doublon après l'échange
+    activerFenetreDoublon(carteRemplacee.valeur);
 }
 
 /**
- * Défausse la carte piochée et active le pouvoir si applicable
+ * Défausse la carte piochée
  */
 function defausserCartePiochee() {
     defausse.push(cartePiochee);
     console.log(`🗑️ J${joueurActif} défausse : ${cartePiochee.valeur}`);
     
     const valeur = cartePiochee.valeur;
+    const carteDefaussee = cartePiochee;
     
-    fermerCartePiochee();
+    document.getElementById('carte-piochee-container')?.remove();
+    cartePiochee = null;
+    enAttenteAction = false;
     
-    // Vérifier et activer les pouvoirs spéciaux
+    // Vérifier effets spéciaux
     if (['8', '9', '10'].includes(valeur)) {
         activerEffetRegard();
     } else if (valeur === 'Valet') {
@@ -448,29 +453,118 @@ function defausserCartePiochee() {
     } else if (valeur === 'Dame') {
         activerEffetDame();
     } else {
-        finirTour();
+        // NOUVEAU : Activer la fenêtre doublon
+        activerFenetreDoublon(carteDefaussee.valeur);
     }
 }
 
 /**
- * Ferme le container de carte piochée
+ * NOUVEAU : Active la fenêtre doublon (3 secondes)
  */
-function fermerCartePiochee() {
-    document.getElementById('carte-piochee-container')?.remove();
-    cartePiochee = null;
-    enAttenteAction = false;
+function activerFenetreDoublon(valeur) {
+    fenetreDoublonActive = true;
+    valeurDoublon = valeur;
+    
+    updateMessage(`⚡ DOUBLON ! Si vous avez un ${valeur}, cliquez sur votre carte (3 secondes) !`);
+    afficherPlateau();
+    
+    // Timer de 3 secondes
+    let countdown = 3;
+    const countdownDiv = document.createElement('div');
+    countdownDiv.id = 'doublon-countdown';
+    countdownDiv.style.cssText = 'position:fixed;top:20px;right:20px;background:#ff4444;color:white;padding:20px;border-radius:10px;font-size:2em;font-weight:bold;z-index:1500;';
+    countdownDiv.textContent = countdown;
+    document.body.appendChild(countdownDiv);
+    
+    const countdownInterval = setInterval(() => {
+        countdown--;
+        countdownDiv.textContent = countdown;
+        if (countdown <= 0) {
+            clearInterval(countdownInterval);
+        }
+    }, 1000);
+    
+    timerDoublon = setTimeout(() => {
+        fermerFenetreDoublon();
+        document.getElementById('doublon-countdown')?.remove();
+    }, 3000);
 }
 
-// ============================================
-// EFFETS SPÉCIAUX DES CARTES
-// ============================================
+/**
+ * NOUVEAU : Tente de poser un doublon
+ */
+function tenterDoublon(index, joueur) {
+    if (!fenetreDoublonActive) return;
+    
+    // NOUVEAU : Si CAMBIO a été annoncé, seul l'adversaire peut poser des doublons
+    if (cambioAnnonce && joueur === joueurCambio) {
+        updateMessage(`❌ Joueur ${joueur} : Vous avez annoncé CAMBIO, vous ne pouvez plus rien faire !`);
+        return;
+    }
+    
+    const main = joueur === 1 ? mainJoueur1 : mainJoueur2;
+    const carte = main[index];
+    
+    // Vérifier si c'est la bonne valeur
+    if (carte.valeur === valeurDoublon) {
+        // SUCCÈS : Poser la carte
+        console.log(`✅ J${joueur} pose un doublon ${carte.valeur} !`);
+        defausse.push(carte);
+        main.splice(index, 1); // Retirer la carte de la main
+        
+        updateMessage(`✅ Joueur ${joueur} a posé un ${carte.valeur} ! (${main.length} cartes restantes)`);
+        
+        // Continuer la fenêtre doublon pour les autres
+        // (ne pas fermer immédiatement)
+    } else {
+        // ERREUR : Pénalité +1 carte
+        console.log(`❌ J${joueur} ERREUR ! Attendait ${valeurDoublon} mais avait ${carte.valeur}`);
+        
+        if (pioche.length > 0) {
+            const cartePenalite = pioche.pop();
+            main.push(cartePenalite);
+            updateMessage(`❌ Joueur ${joueur} : ERREUR ! Pénalité : +1 carte (maintenant ${main.length} cartes)`);
+            console.log(`💥 Pénalité : J${joueur} pioche ${cartePenalite.valeur}`);
+        }
+        
+        // Révéler la carte erronnée pendant 2 secondes
+        const carteDiv = document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`);
+        carteDiv.classList.add('flipping');
+        setTimeout(() => {
+            carteDiv.className = `card card-front card-${carte.couleur}`;
+            carteDiv.style.border = '3px solid red';
+            carteDiv.innerHTML = `
+                <div class="card-value">${carte.valeur}</div>
+                <div class="card-suit suit-${carte.couleur}">${getSymboleCouleur(carte.couleur)}</div>
+                <div class="card-points">${carte.points} pts</div>
+            `;
+            
+            setTimeout(() => {
+                afficherPlateau();
+            }, 2000);
+        }, 300);
+    }
+}
 
 /**
- * Effet 8-9-10 : Regarder une de ses propres cartes
+ * NOUVEAU : Ferme la fenêtre doublon
+ */
+function fermerFenetreDoublon() {
+    fenetreDoublonActive = false;
+    valeurDoublon = null;
+    clearTimeout(timerDoublon);
+    afficherPlateau();
+    
+    // Continuer le jeu normalement
+    finirTour();
+}
+
+/**
+ * Effet 8-9-10 : Regarder une de ses cartes
  */
 function activerEffetRegard() {
     effetSpecialActif = { type: 'regard' };
-    updateMessage(`✨ POUVOIR ACTIVÉ ! Joueur ${joueurActif} : Cliquez sur une de VOS cartes pour la regarder`);
+    updateMessage(`✨ Joueur ${joueurActif} : Regardez une de vos cartes`);
     afficherPlateau();
 }
 
@@ -481,7 +575,6 @@ function regarderCarte(index, joueur) {
     const carte = main[index];
     const carteDiv = document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`);
     
-    // Animation de retournement
     carteDiv.classList.add('flipping');
     setTimeout(() => {
         carteDiv.className = `card card-front card-${carte.couleur}`;
@@ -492,16 +585,19 @@ function regarderCarte(index, joueur) {
         `;
     }, 300);
     
-    // Retourner après 3 secondes
     setTimeout(() => {
         carteDiv.classList.add('flipping');
         setTimeout(() => {
             effetSpecialActif = null;
-            finirTour();
+            
+            // NOUVEAU : Vérifier si on peut activer doublon après l'effet
+            if (defausse.length > 0) {
+                activerFenetreDoublon(defausse[defausse.length - 1].valeur);
+            } else {
+                finirTour();
+            }
         }, 300);
     }, 3000);
-    
-    updateMessage(`Joueur ${joueurActif} : Mémorisez cette carte ! (${carte.points} pts)`);
 }
 
 /**
@@ -509,7 +605,7 @@ function regarderCarte(index, joueur) {
  */
 function activerEffetValet() {
     effetSpecialActif = { type: 'valet', selection: [] };
-    updateMessage(`🔀 POUVOIR VALET ! Joueur ${joueurActif} : Sélectionnez 2 cartes à échanger (les vôtres OU celles de l'adversaire) - SANS les regarder !`);
+    updateMessage(`🃏 Joueur ${joueurActif} : Sélectionnez 2 cartes à échanger SANS LES REGARDER`);
     afficherPlateau();
 }
 
@@ -517,135 +613,140 @@ function selectionnerPourValet(index, joueur) {
     const selection = effetSpecialActif.selection;
     const key = `${joueur}-${index}`;
     
-    // Vérifier si déjà sélectionné
     const indexInSelection = selection.findIndex(s => s.key === key);
     if (indexInSelection >= 0) {
-        // Désélectionner
         selection.splice(indexInSelection, 1);
         document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`).classList.remove('selected');
     } else if (selection.length < 2) {
-        // Sélectionner
         selection.push({ joueur, index, key });
         document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`).classList.add('selected');
     }
     
     if (selection.length === 2) {
-        // Effectuer l'échange (SANS révéler les cartes)
         const [c1, c2] = selection;
         const main1 = c1.joueur === 1 ? mainJoueur1 : mainJoueur2;
         const main2 = c2.joueur === 1 ? mainJoueur1 : mainJoueur2;
         
         [main1[c1.index], main2[c2.index]] = [main2[c2.index], main1[c1.index]];
         
-        console.log(`🔀 Valet : Échange J${c1.joueur}[${c1.index}] ↔ J${c2.joueur}[${c2.index}] (à l'aveugle)`);
-        updateMessage(`Échange effectué ! Les cartes ont été échangées sans être révélées.`);
+        console.log(`🃏 Valet : Échange J${c1.joueur}[${c1.index}] ↔ J${c2.joueur}[${c2.index}]`);
         
         effetSpecialActif = null;
-        setTimeout(() => finirTour(), 1000);
+        
+        // NOUVEAU : Activer doublon après Valet
+        if (defausse.length > 0) {
+            setTimeout(() => activerFenetreDoublon(defausse[defausse.length - 1].valeur), 500);
+        } else {
+            setTimeout(() => finirTour(), 500);
+        }
     } else {
-        updateMessage(`🔀 Sélectionnez encore ${2 - selection.length} carte(s) à échanger`);
+        updateMessage(`🃏 Sélectionnez encore ${2 - selection.length} carte(s)`);
     }
 }
 
 /**
- * Effet Dame : Regarder une carte adverse puis décider d'échanger ou non
+ * Effet Dame : Regarder et échanger une carte
  */
 function activerEffetDame() {
-    effetSpecialActif = { type: 'dame', etape: 1, carteAdverseIndex: null, carteAdverseJoueur: null };
-    updateMessage(`👸 POUVOIR DAME ! Joueur ${joueurActif} : Cliquez sur une carte de l'ADVERSAIRE pour la regarder`);
+    effetSpecialActif = { type: 'dame', etape: 1, carteAdverseIndex: null, carteAdverseInfos: null };
+    updateMessage(`👸 Joueur ${joueurActif} : Cliquez sur une carte de l'adversaire`);
     afficherPlateau();
 }
 
-function regarderCarteAdverseDame(index, joueur) {
-    const mainAdverse = getMainAdverse();
-    const carte = mainAdverse[index];
-    const carteDiv = document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`);
+function regarderEtEchangerDame(index, joueur) {
+    if (!effetSpecialActif || effetSpecialActif.type !== 'dame') return;
     
-    // Sauvegarder l'info
-    effetSpecialActif.carteAdverseIndex = index;
-    effetSpecialActif.carteAdverseJoueur = joueur;
-    
-    // Révéler la carte
-    carteDiv.classList.add('flipping');
-    setTimeout(() => {
-        carteDiv.className = `card card-front card-${carte.couleur} revealed-dame`;
-        carteDiv.innerHTML = `
-            <div class="card-value">${carte.valeur}</div>
-            <div class="card-suit suit-${carte.couleur}">${getSymboleCouleur(carte.couleur)}</div>
-            <div class="card-points">${carte.points} pts</div>
-        `;
+    if (effetSpecialActif.etape === 1) {
+        const main = getMainAdverse();
+        const carte = main[index];
+        const carteDiv = document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`);
         
-        // Passer à l'étape 2 : choix d'échanger ou non
-        effetSpecialActif.etape = 2;
-        afficherChoixEchangeDame(carte);
-    }, 300);
+        effetSpecialActif.carteAdverseIndex = index;
+        effetSpecialActif.carteAdverseInfos = carte;
+        
+        carteDiv.classList.add('flipping');
+        setTimeout(() => {
+            carteDiv.className = `card card-front card-${carte.couleur}`;
+            carteDiv.innerHTML = `
+                <div class="card-value">${carte.valeur}</div>
+                <div class="card-suit suit-${carte.couleur}">${getSymboleCouleur(carte.couleur)}</div>
+                <div class="card-points">${carte.points} pts</div>
+            `;
+            
+            setTimeout(() => {
+                carteDiv.classList.add('flipping');
+                setTimeout(() => {
+                    carteDiv.className = 'card card-back';
+                    carteDiv.innerHTML = '<div class="card-pattern"></div>';
+                    
+                    effetSpecialActif.etape = 2;
+                    updateMessage(`👸 Carte adverse : ${carte.valeur} (${carte.points} pts). Choisissez UNE de VOS cartes`);
+                    afficherPlateau();
+                }, 300);
+            }, 2000);
+        }, 300);
+    }
+    else if (effetSpecialActif.etape === 2 && joueur === joueurActif) {
+        const main = getMainActive();
+        const maCarte = main[index];
+        const carteDiv = document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`);
+        
+        effetSpecialActif.maCarteIndex = index;
+        
+        carteDiv.classList.add('flipping');
+        setTimeout(() => {
+            carteDiv.className = `card card-front card-${maCarte.couleur}`;
+            carteDiv.innerHTML = `
+                <div class="card-value">${maCarte.valeur}</div>
+                <div class="card-suit suit-${maCarte.couleur}">${getSymboleCouleur(maCarte.couleur)}</div>
+                <div class="card-points">${maCarte.points} pts</div>
+            `;
+            
+            setTimeout(() => {
+                const carteAdv = effetSpecialActif.carteAdverseInfos;
+                const echanger = confirm(
+                    `Votre carte : ${maCarte.valeur} (${maCarte.points} pts)\n` +
+                    `Carte adverse : ${carteAdv.valeur} (${carteAdv.points} pts)\n\n` +
+                    `Échanger ?`
+                );
+                
+                if (echanger) {
+                    const mainAdv = getMainAdverse();
+                    [main[index], mainAdv[effetSpecialActif.carteAdverseIndex]] = 
+                    [mainAdv[effetSpecialActif.carteAdverseIndex], main[index]];
+                    console.log(`👸 Dame : Échange effectué`);
+                }
+                
+                effetSpecialActif = null;
+                
+                // NOUVEAU : Activer doublon après Dame
+                if (defausse.length > 0) {
+                    activerFenetreDoublon(defausse[defausse.length - 1].valeur);
+                } else {
+                    finirTour();
+                }
+            }, 2000);
+        }, 300);
+    }
 }
-
-function afficherChoixEchangeDame(carteAdverse) {
-    // Créer un overlay pour le choix
-    const overlay = document.createElement('div');
-    overlay.id = 'dame-choice-overlay';
-    overlay.className = 'dame-choice-overlay';
-    overlay.innerHTML = `
-        <div class="dame-choice-content">
-            <h3>👸 Carte adverse révélée : ${carteAdverse.valeur} (${carteAdverse.points} pts)</h3>
-            <p>Voulez-vous échanger cette carte avec une des vôtres ?</p>
-            <div class="dame-choice-buttons">
-                <button class="btn btn-exchange" onclick="continuerEchangeDame()">✅ Oui, échanger</button>
-                <button class="btn btn-secondary" onclick="annulerEchangeDame()">❌ Non, passer</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(overlay);
-}
-
-function continuerEchangeDame() {
-    document.getElementById('dame-choice-overlay')?.remove();
-    updateMessage(`Joueur ${joueurActif} : Cliquez sur une de VOS cartes pour l'échanger avec la carte adverse`);
-    afficherPlateau();
-}
-
-function annulerEchangeDame() {
-    document.getElementById('dame-choice-overlay')?.remove();
-    effetSpecialActif = null;
-    finirTour();
-}
-
-function echangerAvecAdverseDame(indexMaCarte) {
-    const mainActive = getMainActive();
-    const mainAdverse = getMainAdverse();
-    const indexAdverse = effetSpecialActif.carteAdverseIndex;
-    
-    // Effectuer l'échange
-    [mainActive[indexMaCarte], mainAdverse[indexAdverse]] = [mainAdverse[indexAdverse], mainActive[indexMaCarte]];
-    
-    console.log(`👸 Dame : Échange effectué !`);
-    updateMessage(`Échange effectué !`);
-    
-    effetSpecialActif = null;
-    setTimeout(() => finirTour(), 500);
-}
-
-// ============================================
-// GESTION DES TOURS ET FIN DE PARTIE
-// ============================================
 
 /**
  * Termine le tour et passe au joueur suivant
  */
 function finirTour() {
-    if (dernierTour) {
-        // Le joueur qui n'a PAS annoncé Cambio a fini son dernier tour
+    // Si CAMBIO a été annoncé et que c'est le tour de l'adversaire qui vient de se terminer
+    if (cambioAnnonce && joueurActif !== joueurCambio) {
+        // L'adversaire a terminé son dernier tour → Révéler
         revelerCartes();
         return;
     }
     
-    afficherPlateau();
+    // Sinon, passer au joueur suivant normalement
     afficherTransition(joueurActif === 1 ? 2 : 1);
 }
 
 /**
- * Affiche l'écran de transition entre les joueurs
+ * Affiche l'écran de transition
  */
 function afficherTransition(prochainJoueur, message = null) {
     const transition = document.getElementById('turn-transition');
@@ -653,17 +754,19 @@ function afficherTransition(prochainJoueur, message = null) {
     const msg = document.getElementById('transition-message');
     
     title.textContent = `Au tour du Joueur ${prochainJoueur}`;
-    msg.textContent = message || `Passez l'appareil au Joueur ${prochainJoueur}`;
     
-    if (dernierTour) {
-        msg.textContent = `⚠️ DERNIER TOUR ! Cambio a été annoncé. Passez l'appareil au Joueur ${prochainJoueur}`;
+    // Si CAMBIO a été annoncé et que c'est le tour de l'adversaire
+    if (cambioAnnonce && prochainJoueur !== joueurCambio) {
+        msg.textContent = `⚠️ DERNIER TOUR ! Joueur ${joueurCambio} a annoncé CAMBIO !`;
+    } else {
+        msg.textContent = message || `Passez l'appareil au Joueur ${prochainJoueur}`;
     }
     
     transition.style.display = 'flex';
 }
 
 /**
- * Commence le tour du nouveau joueur
+ * Commence le tour du joueur
  */
 function commencerTour() {
     const transition = document.getElementById('turn-transition');
@@ -671,10 +774,11 @@ function commencerTour() {
     
     afficherPlateau();
     
-    if (defausse.length > 0) {
-        updateMessage(`Joueur ${joueurActif} : Piochez une carte (pioche ou défausse)`);
+    // Message adapté si c'est le dernier tour
+    if (cambioAnnonce && joueurActif !== joueurCambio) {
+        updateMessage(`⚠️ DERNIER TOUR ! Joueur ${joueurActif} : Piochez une carte`);
     } else {
-        updateMessage(`Joueur ${joueurActif} : Piochez une carte de la pioche`);
+        updateMessage(`Joueur ${joueurActif} : Piochez une carte`);
     }
 }
 
@@ -682,6 +786,9 @@ function commencerTour() {
  * Met à jour les indicateurs de tour
  */
 function mettreAJourIndicateursTour() {
+    // NOUVEAU : Ne pas mettre à jour si la partie est terminée
+    if (partieTerminee) return;
+    
     const ind1 = document.getElementById('player1-indicator');
     const ind2 = document.getElementById('player2-indicator');
     
@@ -705,8 +812,8 @@ function calculerEtAfficherScores() {
     const score1 = mainJoueur1.reduce((t, c) => t + c.points, 0);
     const score2 = mainJoueur2.reduce((t, c) => t + c.points, 0);
     
-    document.getElementById('player1-score').textContent = `${score1} (${mainJoueur1.length} cartes)`;
-    document.getElementById('player2-score').textContent = `${score2} (${mainJoueur2.length} cartes)`;
+    document.getElementById('player1-score').textContent = score1;
+    document.getElementById('player2-score').textContent = score2;
     document.getElementById('current-score').textContent = joueurActif === 1 ? score1 : score2;
 }
 
@@ -718,130 +825,70 @@ function annoncerCambio() {
     
     cambioAnnonce = true;
     joueurCambio = joueurActif;
-    dernierTour = true;
     
-    updateMessage(`🎺 CAMBIO ! Joueur ${joueurActif} pense avoir le score le plus bas ! Dernier tour pour l'adversaire !`);
+    updateMessage(`🎺 Joueur ${joueurActif} annonce CAMBIO ! L'adversaire a un dernier tour !`);
     document.getElementById('btn-cambio').style.display = 'none';
     
-    // L'adversaire joue son dernier tour
+    console.log(`🎺 CAMBIO annoncé par J${joueurActif}. Dernier tour pour J${joueurActif === 1 ? 2 : 1}`);
+    
+    // Terminer le tour normalement et passer à l'adversaire
     finirTour();
 }
 
 /**
- * PÉNALITÉ : Ajoute une carte au deck du joueur perdant
- */
-function appliquerPenalite(joueur) {
-    if (pioche.length === 0) {
-        console.log("Pas de carte disponible pour la pénalité");
-        return;
-    }
-    
-    const cartePenalite = pioche.pop();
-    const main = joueur === 1 ? mainJoueur1 : mainJoueur2;
-    main.push(cartePenalite);
-    
-    console.log(`⚠️ PÉNALITÉ : Joueur ${joueur} reçoit une carte supplémentaire (${cartePenalite.valeur} de ${cartePenalite.couleur})`);
-    return cartePenalite;
-}
-
-/**
- * Révèle toutes les cartes et détermine le gagnant
+ * Révèle toutes les cartes
  */
 function revelerCartes() {
-    // Révéler toutes les cartes du Joueur 1
-    mainJoueur1.forEach((carte, i) => {
-        const div = document.querySelector(`[data-joueur="1"][data-index="${i}"]`);
-        if (div) {
-            div.className = `card card-front card-${carte.couleur}`;
-            div.innerHTML = `
-                <div class="card-value">${carte.valeur}</div>
-                <div class="card-suit suit-${carte.couleur}">${getSymboleCouleur(carte.couleur)}</div>
-                <div class="card-points">${carte.points} pts</div>
-            `;
-        }
-    });
+    partieTerminee = true; // NOUVEAU : Marquer la partie comme terminée
     
-    // Révéler toutes les cartes du Joueur 2
-    mainJoueur2.forEach((carte, i) => {
-        const div = document.querySelector(`[data-joueur="2"][data-index="${i}"]`);
-        if (div) {
-            div.className = `card card-front card-${carte.couleur}`;
-            div.innerHTML = `
-                <div class="card-value">${carte.valeur}</div>
-                <div class="card-suit suit-${carte.couleur}">${getSymboleCouleur(carte.couleur)}</div>
-                <div class="card-points">${carte.points} pts</div>
-            `;
-        }
-    });
+    // NOUVEAU : Cacher le bouton CAMBIO
+    document.getElementById('btn-cambio').style.display = 'none';
     
+    // Calculer les scores
     const score1 = mainJoueur1.reduce((t, c) => t + c.points, 0);
     const score2 = mainJoueur2.reduce((t, c) => t + c.points, 0);
     
-    let message = `🎴 FIN DE MANCHE | Joueur 1 : ${score1} pts (${mainJoueur1.length} cartes) | Joueur 2 : ${score2} pts (${mainJoueur2.length} cartes)\n`;
+    // NOUVEAU : Afficher les scores à côté des noms
+    const titre1 = document.querySelector('.player-section.current-player h2');
+    const titre2 = document.querySelector('.player-section.opponent h2');
     
-    // Déterminer le gagnant et appliquer pénalité si nécessaire
+    titre1.innerHTML = `Joueur 1 : ${score1} points`;
+    titre2.innerHTML = `Joueur 2 : ${score2} points`;
+    
+    // Afficher les cartes face visible
+    afficherPlateau();
+    
+    // Déterminer le gagnant
+    let message = `🏁 FIN DE PARTIE ! `;
+    
     if (score1 < score2) {
-        if (joueurCambio === 1) {
-            message += `🏆 Joueur 1 GAGNE ! Cambio réussi !`;
-        } else {
-            message += `✅ Joueur 1 gagne, mais Joueur 2 a mal annoncé Cambio.`;
-            // Pénalité potentielle ici
-        }
+        message += joueurCambio === 1 ? '🏆 Joueur 1 GAGNE avec CAMBIO !' : '🏆 Joueur 1 GAGNE (Joueur 2 a perdu le pari CAMBIO) !';
     } else if (score2 < score1) {
-        if (joueurCambio === 2) {
-            message += `🏆 Joueur 2 GAGNE ! Cambio réussi !`;
-        } else {
-            message += `✅ Joueur 2 gagne, mais Joueur 1 a mal annoncé Cambio.`;
-        }
+        message += joueurCambio === 2 ? '🏆 Joueur 2 GAGNE avec CAMBIO !' : '🏆 Joueur 2 GAGNE (Joueur 1 a perdu le pari CAMBIO) !';
     } else {
-        // Égalité - celui qui a annoncé Cambio est pénalisé
-        message += `🤝 ÉGALITÉ ! `;
-        if (joueurCambio) {
-            const cartePenalite = appliquerPenalite(joueurCambio);
-            if (cartePenalite) {
-                message += `Joueur ${joueurCambio} reçoit une carte de pénalité pour avoir annoncé Cambio sans avoir le meilleur score !`;
-            }
-        }
-    }
-    
-    // Si celui qui a annoncé Cambio n'a pas le meilleur score, pénalité
-    if (joueurCambio === 1 && score1 >= score2) {
-        const cartePenalite = appliquerPenalite(1);
-        if (cartePenalite) {
-            message += ` ⚠️ PÉNALITÉ : Joueur 1 reçoit une carte supplémentaire !`;
-        }
-    } else if (joueurCambio === 2 && score2 >= score1) {
-        const cartePenalite = appliquerPenalite(2);
-        if (cartePenalite) {
-            message += ` ⚠️ PÉNALITÉ : Joueur 2 reçoit une carte supplémentaire !`;
-        }
+        message += '🤝 ÉGALITÉ !';
     }
     
     updateMessage(message);
     console.log(message);
-    
-    // Rafraîchir l'affichage avec les cartes de pénalité
-    afficherPlateau();
 }
 
 /**
- * Met à jour le message du jeu
+ * Met à jour le message
  */
 function updateMessage(message) {
     document.getElementById('game-message').textContent = message;
 }
 
 /**
- * Initialise une nouvelle partie
+ * Initialise le jeu
  */
 function initialiserJeu() {
     console.clear();
     console.log('═══════════════════════════════════');
     console.log('  🎮 CAMBIO - 2 JOUEURS LOCAL    ');
-    console.log('  Version avec règles corrigées   ');
     console.log('═══════════════════════════════════\n');
     
-    // Réinitialiser tous les états
     phaseInitiale = true;
     joueurActif = 1;
     cartesVuesJ1 = [];
@@ -849,37 +896,42 @@ function initialiserJeu() {
     peekCountJ1 = 0;
     peekCountJ2 = 0;
     cartePiochee = null;
-    sourceCartePiochee = null;
     enAttenteAction = false;
     effetSpecialActif = null;
     cambioAnnonce = false;
     joueurCambio = null;
-    dernierTour = false;
+    partieTerminee = false; // NOUVEAU : Réinitialiser
+    fenetreDoublonActive = false;
+    valeurDoublon = null;
     
-    // Créer et distribuer
     deck = creerDeck();
     deck = melangerDeck(deck);
     distribuerCartes();
     afficherPlateau();
     
-    updateMessage("Joueur 1 : Sélectionnez 2 de vos cartes à mémoriser");
+    // NOUVEAU : Restaurer les titres originaux
+    const titre1 = document.querySelector('.player-section.current-player h2');
+    const titre2 = document.querySelector('.player-section.opponent h2');
+    titre1.innerHTML = 'Joueur 1 <span id="player1-indicator" class="turn-indicator active">← Votre tour</span>';
+    titre2.innerHTML = 'Joueur 2 <span id="player2-indicator" class="turn-indicator"></span>';
     
-    // Nettoyer l'interface
+    updateMessage("Joueur 1 : Sélectionnez 2 cartes à mémoriser");
+    
     document.getElementById('carte-piochee-container')?.remove();
-    document.getElementById('dame-choice-overlay')?.remove();
+    document.getElementById('doublon-countdown')?.remove();
     document.getElementById('btn-cambio').style.display = 'none';
     document.getElementById('turn-transition').style.display = 'none';
 }
 
 // ============================================
-// INITIALISATION AU CHARGEMENT
+// INITIALISATION
 // ============================================
 
 window.addEventListener('DOMContentLoaded', () => {
     initialiserJeu();
     
     document.getElementById('btn-nouvelle-partie').addEventListener('click', () => {
-        if (confirm('Commencer une nouvelle partie ?')) initialiserJeu();
+        if (confirm('Nouvelle partie ?')) initialiserJeu();
     });
     
     document.getElementById('btn-cambio').addEventListener('click', annoncerCambio);
@@ -890,12 +942,10 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// API de debug
 window.cambio = {
     initialiserJeu,
     getMainJoueur1: () => mainJoueur1,
     getMainJoueur2: () => mainJoueur2,
     getPioche: () => pioche,
-    getDefausse: () => defausse,
-    getJoueurActif: () => joueurActif
+    getDefausse: () => defausse
 };
