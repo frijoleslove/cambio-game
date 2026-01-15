@@ -413,53 +413,91 @@ function activerModeEchange() {
 }
 
 /**
- * Échange la carte piochée
+ * Échange la carte piochée avec animation
  */
 function echangerCarte(index) {
-    const main = getMainActive();
-    const carteRemplacee = main[index];
-    main[index] = cartePiochee;
-    defausse.push(carteRemplacee);
+    const piocheeContainer = document.getElementById('carte-piochee-container');
     
-    console.log(`🔄 J${joueurActif} échange : ${cartePiochee.valeur} remplace ${carteRemplacee.valeur}`);
+    // ANIMATION : Déplacer visuellement la carte vers la main
+    if (piocheeContainer) {
+        const carteElement = piocheeContainer.querySelector('.carte-piochee');
+        const targetCard = document.querySelector(`[data-joueur="${joueurActif}"][data-index="${index}"]`);
+        
+        if (carteElement && targetCard) {
+            const targetRect = targetCard.getBoundingClientRect();
+            const carteRect = carteElement.getBoundingClientRect();
+            
+            const deltaX = targetRect.left - carteRect.left;
+            const deltaY = targetRect.top - carteRect.top;
+            
+            carteElement.style.transition = 'all 0.5s ease';
+            carteElement.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(0.8)`;
+            carteElement.style.opacity = '0';
+        }
+    }
     
-    document.getElementById('carte-piochee-container')?.remove();
-    cartePiochee = null;
-    enAttenteAction = false;
-    
-    // NOUVEAU : Activer la fenêtre doublon après l'échange
-    activerFenetreDoublon(carteRemplacee.valeur);
+    // Attendre la fin de l'animation
+    setTimeout(() => {
+        const main = getMainActive();
+        const carteRemplacee = main[index];
+        main[index] = cartePiochee;
+        defausse.push(carteRemplacee);
+        
+        console.log(`🔄 J${joueurActif} échange : ${cartePiochee.valeur} remplace ${carteRemplacee.valeur}`);
+        
+        document.getElementById('carte-piochee-container')?.remove();
+        cartePiochee = null;
+        enAttenteAction = false;
+        
+        // Activer la fenêtre doublon INVISIBLE après l'échange
+        activerFenetreDoublon(carteRemplacee.valeur);
+    }, 500);
 }
 
 /**
- * Défausse la carte piochée
+ * Défausse la carte piochée avec animation
  */
 function defausserCartePiochee() {
-    defausse.push(cartePiochee);
-    console.log(`🗑️ J${joueurActif} défausse : ${cartePiochee.valeur}`);
+    const piocheeContainer = document.getElementById('carte-piochee-container');
     
-    const valeur = cartePiochee.valeur;
-    const carteDefaussee = cartePiochee;
-    
-    document.getElementById('carte-piochee-container')?.remove();
-    cartePiochee = null;
-    enAttenteAction = false;
-    
-    // Vérifier effets spéciaux
-    if (['8', '9', '10'].includes(valeur)) {
-        activerEffetRegard();
-    } else if (valeur === 'Valet') {
-        activerEffetValet();
-    } else if (valeur === 'Dame') {
-        activerEffetDame();
-    } else {
-        // NOUVEAU : Activer la fenêtre doublon
-        activerFenetreDoublon(carteDefaussee.valeur);
+    // ANIMATION : Déplacer visuellement la carte vers la défausse
+    if (piocheeContainer) {
+        const carteElement = piocheeContainer.querySelector('.carte-piochee');
+        if (carteElement) {
+            carteElement.style.transition = 'all 0.5s ease';
+            carteElement.style.transform = 'translate(-200px, 100px) scale(0.8)';
+            carteElement.style.opacity = '0';
+        }
     }
+    
+    // Attendre la fin de l'animation avant de continuer
+    setTimeout(() => {
+        defausse.push(cartePiochee);
+        console.log(`🗑️ J${joueurActif} défausse : ${cartePiochee.valeur}`);
+        
+        const valeur = cartePiochee.valeur;
+        const carteDefaussee = cartePiochee;
+        
+        document.getElementById('carte-piochee-container')?.remove();
+        cartePiochee = null;
+        enAttenteAction = false;
+        
+        // Vérifier effets spéciaux
+        if (['8', '9', '10'].includes(valeur)) {
+            activerEffetRegard();
+        } else if (valeur === 'Valet') {
+            activerEffetValet();
+        } else if (valeur === 'Dame') {
+            activerEffetDame();
+        } else {
+            // Activer la fenêtre doublon INVISIBLE
+            activerFenetreDoublon(carteDefaussee.valeur);
+        }
+    }, 500); // Durée de l'animation
 }
 
 /**
- * NOUVEAU : Active la fenêtre doublon (3 secondes)
+ * REFONTE : Active la fenêtre doublon (INVISIBLE, 2 secondes)
  */
 function activerFenetreDoublon(valeur) {
     // SÉCURITÉ : Ne pas activer si pas de valeur ou si partie terminée
@@ -468,69 +506,37 @@ function activerFenetreDoublon(valeur) {
         return;
     }
     
-    console.log(`⚡ Activation fenêtre doublon pour : ${valeur}`);
+    console.log(`⚡ Activation fenêtre doublon INVISIBLE pour : ${valeur}`);
     
     fenetreDoublonActive = true;
     valeurDoublon = valeur;
     
-    updateMessage(`⚡ DOUBLON ! Si vous avez un ${valeur}, cliquez sur votre carte (3 secondes) !`);
+    // Message discret avec effet visuel subtil
+    updateMessage(`💨 Doublons possibles ! Soyez rapide...`);
+    document.getElementById('game-message').classList.add('doublon-actif');
+    
+    // Afficher le plateau avec les cartes cliquables (effet visuel léger)
     afficherPlateau();
-    
-    // CORRECTION : S'assurer que l'ancien countdown est supprimé
-    const oldCountdown = document.getElementById('doublon-countdown');
-    if (oldCountdown) {
-        oldCountdown.remove();
-    }
-    
-    // Timer de 3 secondes avec bouton Passer
-    let countdown = 3;
-    const countdownDiv = document.createElement('div');
-    countdownDiv.id = 'doublon-countdown';
-    countdownDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.95);color:white;padding:40px 60px;border-radius:20px;font-size:4em;font-weight:bold;z-index:9999;box-shadow:0 10px 50px rgba(0,0,0,0.8);text-align:center;';
-    countdownDiv.innerHTML = `
-        <div style="font-size:4em;margin-bottom:20px;color:#ff4444;">${countdown}</div>
-        <div style="font-size:0.5em;margin-bottom:15px;">Carte défaussée: ${valeur}</div>
-        <button id="btn-passer-doublon" style="font-size:0.4em;padding:10px 30px;background:#666;color:white;border:none;border-radius:10px;cursor:pointer;margin-top:10px;">Passer</button>
-    `;
-    document.body.appendChild(countdownDiv);
-    
-    // Bouton passer
-    document.getElementById('btn-passer-doublon').addEventListener('click', () => {
-        console.log('👆 Utilisateur a cliqué sur Passer');
-        clearInterval(countdownInterval);
-        fermerFenetreDoublon();
-    });
-    
-    const countdownInterval = setInterval(() => {
-        countdown--;
-        const countdownDisplay = countdownDiv.querySelector('div');
-        if (countdownDisplay) {
-            countdownDisplay.textContent = countdown;
-        }
-        if (countdown <= 0) {
-            clearInterval(countdownInterval);
-        }
-    }, 1000);
     
     // CORRECTION : S'assurer que le timer précédent est annulé
     if (timerDoublon) {
         clearTimeout(timerDoublon);
     }
     
+    // Timer INVISIBLE de 2 secondes (pas de countdown affiché)
     timerDoublon = setTimeout(() => {
-        console.log('⏰ Timer doublon terminé automatiquement');
-        clearInterval(countdownInterval);
+        console.log('⏰ Fenêtre doublon terminée (invisible)');
         fermerFenetreDoublon();
-    }, 3000);
+    }, 2000); // 2 secondes au lieu de 3
 }
 
 /**
- * NOUVEAU : Tente de poser un doublon
+ * REFONTE : Tente de poser un doublon
  */
 function tenterDoublon(index, joueur) {
     if (!fenetreDoublonActive) return;
     
-    // NOUVEAU : Si CAMBIO a été annoncé, seul l'adversaire peut poser des doublons
+    // Si CAMBIO a été annoncé, seul l'adversaire peut poser des doublons
     if (cambioAnnonce && joueur === joueurCambio) {
         updateMessage(`❌ Joueur ${joueur} : Vous avez annoncé CAMBIO, vous ne pouvez plus rien faire !`);
         return;
@@ -541,17 +547,32 @@ function tenterDoublon(index, joueur) {
     
     // Vérifier si c'est la bonne valeur
     if (carte.valeur === valeurDoublon) {
-        // SUCCÈS : Poser la carte
-        console.log(`✅ J${joueur} pose un doublon ${carte.valeur} !`);
-        defausse.push(carte);
-        main.splice(index, 1); // Retirer la carte de la main
+        // SUCCÈS : Animation de la carte vers la défausse
+        const carteDiv = document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`);
         
-        updateMessage(`✅ Joueur ${joueur} a posé un ${carte.valeur} ! (${main.length} cartes restantes)`);
+        if (carteDiv) {
+            // Flash vert de succès
+            carteDiv.style.transition = 'all 0.3s ease';
+            carteDiv.style.boxShadow = '0 0 40px rgba(0, 255, 0, 1)';
+            carteDiv.style.transform = 'scale(1.2)';
+            
+            setTimeout(() => {
+                carteDiv.style.transform = 'translateY(200px) scale(0.5)';
+                carteDiv.style.opacity = '0';
+            }, 200);
+        }
         
-        // Continuer la fenêtre doublon pour les autres
-        // (ne pas fermer immédiatement)
+        setTimeout(() => {
+            console.log(`✅ J${joueur} pose un doublon ${carte.valeur} !`);
+            defausse.push(carte);
+            main.splice(index, 1);
+            
+            updateMessage(`✅ Joueur ${joueur} a posé un ${carte.valeur} ! (${main.length} cartes restantes)`);
+            afficherPlateau();
+        }, 500);
+        
     } else {
-        // ERREUR : Pénalité +1 carte
+        // ERREUR : Pénalité +1 carte avec animation
         console.log(`❌ J${joueur} ERREUR ! Attendait ${valeurDoublon} mais avait ${carte.valeur}`);
         
         if (pioche.length > 0) {
@@ -561,49 +582,53 @@ function tenterDoublon(index, joueur) {
             console.log(`💥 Pénalité : J${joueur} pioche ${cartePenalite.valeur}`);
         }
         
-        // Révéler la carte erronnée pendant 2 secondes
+        // Révéler la carte erronnée avec flash rouge
         const carteDiv = document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`);
-        carteDiv.classList.add('flipping');
-        setTimeout(() => {
-            carteDiv.className = `card card-front card-${carte.couleur}`;
-            carteDiv.style.border = '3px solid red';
-            carteDiv.innerHTML = `
-                <div class="card-value">${carte.valeur}</div>
-                <div class="card-suit suit-${carte.couleur}">${getSymboleCouleur(carte.couleur)}</div>
-                <div class="card-points">${carte.points} pts</div>
-            `;
+        if (carteDiv) {
+            carteDiv.style.transition = 'all 0.2s ease';
+            carteDiv.style.boxShadow = '0 0 40px rgba(255, 0, 0, 1)';
             
+            carteDiv.classList.add('flipping');
             setTimeout(() => {
-                afficherPlateau();
-            }, 2000);
-        }, 300);
+                carteDiv.className = `card card-front card-${carte.couleur}`;
+                carteDiv.style.border = '3px solid red';
+                carteDiv.innerHTML = `
+                    <div class="card-value">${carte.valeur}</div>
+                    <div class="card-suit suit-${carte.couleur}">${getSymboleCouleur(carte.couleur)}</div>
+                    <div class="card-points">${carte.points} pts</div>
+                `;
+                
+                setTimeout(() => {
+                    afficherPlateau();
+                }, 2000);
+            }, 300);
+        }
     }
 }
 
 /**
- * NOUVEAU : Ferme la fenêtre doublon
+ * REFONTE : Ferme la fenêtre doublon (sans countdown à supprimer)
  */
 function fermerFenetreDoublon() {
-    console.log('🔒 Fermeture de la fenêtre doublon');
+    console.log('🔒 Fermeture de la fenêtre doublon invisible');
     
     fenetreDoublonActive = false;
     valeurDoublon = null;
+    
+    // Retirer l'effet visuel du message
+    document.getElementById('game-message').classList.remove('doublon-actif');
     
     if (timerDoublon) {
         clearTimeout(timerDoublon);
         timerDoublon = null;
     }
     
-    // Supprimer le countdown
-    const countdown = document.getElementById('doublon-countdown');
-    if (countdown) {
-        countdown.remove();
-    }
-    
     afficherPlateau();
     
-    // Continuer le jeu normalement
-    finirTour();
+    // Ne pas finir le tour si on est en phase initiale ou si la partie est terminée
+    if (!phaseInitiale && !partieTerminee) {
+        finirTour();
+    }
 }
 
 /**
@@ -965,7 +990,6 @@ function initialiserJeu() {
     updateMessage("Joueur 1 : Sélectionnez 2 cartes à mémoriser");
     
     document.getElementById('carte-piochee-container')?.remove();
-    document.getElementById('doublon-countdown')?.remove();
     document.getElementById('btn-cambio').style.display = 'none';
     document.getElementById('turn-transition').style.display = 'none';
 }

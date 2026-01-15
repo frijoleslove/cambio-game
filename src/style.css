@@ -65,12 +65,25 @@ body {
     margin-bottom: 30px;
     font-size: 1.1em;
     font-weight: 500;
-    animation: pulse 2s infinite;
+    transition: all 0.3s ease;
 }
 
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
+/* Animation subtile pour phase doublon active */
+.game-message.doublon-actif {
+    background: rgba(255, 215, 0, 0.3);
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+    animation: pulse-message 0.8s infinite;
+}
+
+@keyframes pulse-message {
+    0%, 100% { 
+        transform: scale(1);
+        opacity: 1; 
+    }
+    50% { 
+        transform: scale(1.02);
+        opacity: 0.9; 
+    }
 }
 
 /* ============================================
@@ -402,16 +415,27 @@ body {
     box-shadow: 0 0 30px rgba(255, 0, 255, 0.9);
 }
 
-/* Cartes cliquables pour doublons */
+/* Cartes cliquables pour doublons - EFFET SUBTIL ET RAPIDE */
 .card.doublon-clickable {
     cursor: pointer;
-    box-shadow: 0 0 15px rgba(255, 255, 0, 0.6);
-    animation: glow-yellow 1s infinite;
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+    animation: pulse-doublon 0.6s infinite;
+    transform: translateY(-5px);
+    transition: all 0.2s ease;
 }
 
-@keyframes glow-yellow {
-    0%, 100% { box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); }
-    50% { box-shadow: 0 0 25px rgba(255, 255, 0, 0.9); }
+.card.doublon-clickable:hover {
+    transform: translateY(-10px) scale(1.05);
+    box-shadow: 0 0 30px rgba(255, 215, 0, 1);
+}
+
+@keyframes pulse-doublon {
+    0%, 100% { 
+        box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+    }
+    50% { 
+        box-shadow: 0 0 30px rgba(255, 215, 0, 1);
+    }
 }
 
 /* Animation de retournement */
