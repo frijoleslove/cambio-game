@@ -220,6 +220,17 @@ body {
     color: #2c3e50;
 }
 
+/* Jokers */
+.card-joker-rouge {
+    color: #e74c3c;
+    background: linear-gradient(135deg, #fff 0%, #ffe0e0 100%);
+}
+
+.card-joker-noir {
+    color: #2c3e50;
+    background: linear-gradient(135deg, #fff 0%, #e0e0e0 100%);
+}
+
 /* Symboles des couleurs */
 .suit-coeur::before { content: "♥"; }
 .suit-carreau::before { content: "♦"; }
@@ -265,12 +276,6 @@ body {
     background: #ffd700;
     color: #000;
     opacity: 1;
-    animation: pulse-turn 2s infinite;
-}
-
-@keyframes pulse-turn {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.05); }
 }
 
 .score-display-small {
@@ -288,10 +293,20 @@ body {
     padding: 20px;
     background: rgba(0, 0, 0, 0.2);
     border-radius: 15px;
+    border: 3px solid transparent;
+    transition: all 0.3s ease;
 }
 
-.player-section.current-player .player-hand {
-    border: 2px solid rgba(255, 215, 0, 0.3);
+/* ============================================
+   BORDURE LUMINEUSE BLANCHE - JOUEUR ACTIF
+   ============================================ */
+
+.player-hand.active-turn {
+    border: 3px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 
+        0 0 15px rgba(255, 255, 255, 0.6),
+        0 0 30px rgba(255, 255, 255, 0.3),
+        inset 0 0 15px rgba(255, 255, 255, 0.1);
 }
 
 /* Cartes de l'adversaire (rotation pour différencier) */
@@ -304,50 +319,17 @@ body {
 }
 
 /* ============================================
-   ÉCRAN DE TRANSITION
+   ÉCRAN DE TRANSITION (CACHÉ - NON UTILISÉ)
    ============================================ */
 
 .turn-transition {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-    z-index: 2000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: fadeIn 0.3s;
+    display: none !important;
 }
 
-.transition-content {
-    text-align: center;
-    padding: 50px;
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
-    border-radius: 20px;
-    box-shadow: 0 10px 50px rgba(0, 0, 0, 0.5);
-}
+/* ============================================
+   ÉTATS DES CARTES
+   ============================================ */
 
-.transition-content h1 {
-    font-size: 3em;
-    margin-bottom: 20px;
-    color: #ffd700;
-}
-
-.transition-content p {
-    font-size: 1.5em;
-    margin-bottom: 30px;
-    color: #fff;
-}
-
-.btn-large {
-    font-size: 1.3em;
-    padding: 20px 50px;
-}
-
-/* États des cartes */
 .card.peekable {
     animation: shake 0.5s;
     box-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
@@ -373,16 +355,16 @@ body {
     transform: none;
 }
 
-/* Cartes piochables */
+/* Cartes piochables - Doré (couleur d'accent du thème) */
 .card.piochable {
     cursor: pointer;
-    box-shadow: 0 0 15px rgba(0, 255, 255, 0.6);
-    animation: glow-blue 2s infinite;
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+    animation: glow-gold 2s infinite;
 }
 
-@keyframes glow-blue {
+@keyframes glow-gold {
     0%, 100% { box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); }
-    50% { box-shadow: 0 0 25px rgba(0, 255, 255, 0.8); }
+    50% { box-shadow: 0 0 25px rgba(255, 215, 0, 0.8); }
 }
 
 /* Cartes échangeables */
@@ -415,7 +397,7 @@ body {
     box-shadow: 0 0 30px rgba(255, 0, 255, 0.9);
 }
 
-/* Cartes cliquables pour doublons - EFFET SUBTIL ET RAPIDE */
+/* Cartes cliquables pour doublons */
 .card.doublon-clickable {
     cursor: pointer;
     box-shadow: 0 0 20px rgba(255, 215, 0, 0.8);

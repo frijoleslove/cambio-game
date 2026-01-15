@@ -49,6 +49,7 @@ let timerDoublon = null;
  * Calcule les points d'une carte
  */
 function calculerPoints(valeur, couleur) {
+    if (valeur === 'Joker') return 0;
     if (valeur === 'Roi' && couleur === 'coeur') return -1;
     if (valeur === 'Roi') return 13;
     if (valeur === 'As') return 1;
@@ -72,6 +73,21 @@ function creerDeck() {
             });
         }
     }
+    
+    // Ajouter 2 Jokers (valeur 0)
+    nouveauDeck.push({
+        valeur: 'Joker',
+        couleur: 'rouge',
+        points: 0,
+        id: 'Joker_rouge'
+    });
+    nouveauDeck.push({
+        valeur: 'Joker',
+        couleur: 'noir',
+        points: 0,
+        id: 'Joker_noir'
+    });
+    
     return nouveauDeck;
 }
 
@@ -98,7 +114,10 @@ function distribuerCartes() {
         mainJoueur2.push(pioche.pop());
     }
     
-    console.log(`🎴 Distribution : J1 = ${mainJoueur1.length}, J2 = ${mainJoueur2.length}, Pioche = ${pioche.length}`);
+    // DEBUG : Afficher les cartes distribuées
+    console.log(`🃏 Joueur 1 :`, mainJoueur1.map(c => `${c.valeur} ${c.couleur}`).join(', '));
+    console.log(`🃏 Joueur 2 :`, mainJoueur2.map(c => `${c.valeur} ${c.couleur}`).join(', '));
+    console.log(`📦 Pioche : ${pioche.length} cartes restantes`);
 }
 
 /**
@@ -116,7 +135,7 @@ function getMainAdverse() {
  * Symbole de couleur
  */
 function getSymboleCouleur(couleur) {
-    const symboles = { 'coeur': '♥', 'carreau': '♦', 'pique': '♠', 'trefle': '♣' };
+    const symboles = { 'coeur': '♥', 'carreau': '♦', 'pique': '♠', 'trefle': '♣', 'rouge': '🃏', 'noir': '🃏' };
     return symboles[couleur] || '';
 }
 
@@ -130,12 +149,22 @@ function afficherCarte(carte, index, faceVisible = false, joueur = 1) {
     carteDiv.dataset.joueur = joueur;
     
     if (faceVisible) {
-        carteDiv.classList.add('card-front', `card-${carte.couleur}`);
-        carteDiv.innerHTML = `
-            <div class="card-value">${carte.valeur}</div>
-            <div class="card-suit suit-${carte.couleur}">${getSymboleCouleur(carte.couleur)}</div>
-            <div class="card-points">${carte.points} pts</div>
-        `;
+        // Joker : style spécial
+        if (carte.valeur === 'Joker') {
+            carteDiv.classList.add('card-front', `card-joker-${carte.couleur}`);
+            carteDiv.innerHTML = `
+                <div class="card-value" style="color: ${carte.couleur === 'rouge' ? '#e74c3c' : '#2c3e50'};">★</div>
+                <div class="card-suit" style="font-size: 2.5em;">🃏</div>
+                <div class="card-points">${carte.points} pts</div>
+            `;
+        } else {
+            carteDiv.classList.add('card-front', `card-${carte.couleur}`);
+            carteDiv.innerHTML = `
+                <div class="card-value">${carte.valeur}</div>
+                <div class="card-suit suit-${carte.couleur}">${getSymboleCouleur(carte.couleur)}</div>
+                <div class="card-points">${carte.points} pts</div>
+            `;
+        }
     } else {
         carteDiv.classList.add('card-back');
         carteDiv.innerHTML = '<div class="card-pattern"></div>';
@@ -238,7 +267,7 @@ function afficherCentrale() {
         const placeholder = document.createElement('div');
         placeholder.className = 'card defausse-vide';
         placeholder.textContent = 'VIDE';
-        placeholder.style.cssText = 'display:flex;align-items:center;justify-content:center;font-size:1.2em;color:#666;border:2px dashed #666;background:rgba(255,255,255,0.1);';
+        placeholder.style.cssText = 'display:flex;align-items:center;justify-content:center;font-size:1.2em;color:#999;border:2px dashed #ccc;background:white;';
         defausseDiv.appendChild(placeholder);
     }
     
@@ -326,6 +355,7 @@ function gererPeek(index, joueur) {
 
 /**
  * Change de joueur pendant la phase initiale
+ * MODIFIÉ : Changement direct sans popup
  */
 function changerJoueurInitial() {
     if (peekCountJ1 >= 2 && peekCountJ2 >= 2) {
@@ -344,8 +374,11 @@ function changerJoueurInitial() {
             document.getElementById('btn-cambio').style.display = 'inline-block';
         }, 3500);
     } else if (joueurActif === 1 && peekCountJ1 >= 2) {
+        // Changement direct vers joueur 2 (sans popup)
         setTimeout(() => {
-            afficherTransition(2, "C'est au tour du Joueur 2 de regarder ses cartes");
+            joueurActif = 2;
+            afficherPlateau();
+            updateMessage(`Joueur 2 : Sélectionnez 2 cartes à mémoriser`);
         }, 3500);
     }
 }
@@ -550,7 +583,8 @@ function defausserCartePiochee() {
 }
 
 /**
- * Active la fenêtre doublon (2 secondes, invisible)
+ * Active la fenêtre doublon (5 secondes max)
+ * CORRIGÉ : Timer obligatoire + fermeture immédiate après action
  */
 function activerFenetreDoublon(valeur) {
     if (!valeur || partieTerminee) {
@@ -558,42 +592,61 @@ function activerFenetreDoublon(valeur) {
         return;
     }
     
-    console.log(`⚡ Activation fenêtre doublon pour : ${valeur}`);
+    console.log(`⚡ Activation fenêtre doublon pour : ${valeur} (5 secondes)`);
     
     fenetreDoublonActive = true;
     valeurDoublon = valeur;
     
-    updateMessage(`💨 Doublons possibles ! Carte : ${valeur} - Soyez rapide (2 secondes)...`);
+    updateMessage(`💨 Doublons possibles ! Carte : ${valeur} - Soyez rapide (5 secondes)...`);
     document.getElementById('game-message').classList.add('doublon-actif');
     
     afficherPlateau();
     
+    // Annuler tout timer précédent
     if (timerDoublon) {
         clearTimeout(timerDoublon);
     }
     
+    // Timer de 5 secondes - fin automatique si personne ne joue
     timerDoublon = setTimeout(() => {
-        console.log('⏰ Fenêtre doublon terminée');
+        console.log('⏰ Fenêtre doublon expirée (5 secondes)');
         fermerFenetreDoublon();
-    }, 2000);
+    }, 5000);
 }
 
 /**
  * Tente de poser un doublon
+ * CORRIGÉ : Fermeture immédiate après une action (succès ou erreur)
  */
 function tenterDoublon(index, joueur) {
-    if (!fenetreDoublonActive || etatTour !== 'REACTION') return;
+    // Vérifier que la phase est active
+    if (!fenetreDoublonActive || etatTour !== 'REACTION') {
+        console.log('❌ Phase de réaction non active, action ignorée');
+        return;
+    }
     
+    // Joueur CAMBIO ne peut pas jouer
     if (cambioAnnonce && joueur === joueurCambio) {
         updateMessage(`❌ Joueur ${joueur} : Vous avez annoncé CAMBIO !`);
         return;
     }
     
+    // DÉSACTIVER IMMÉDIATEMENT la phase pour empêcher d'autres actions
+    fenetreDoublonActive = false;
+    
+    // Annuler le timer
+    if (timerDoublon) {
+        clearTimeout(timerDoublon);
+        timerDoublon = null;
+    }
+    
     const main = joueur === 1 ? mainJoueur1 : mainJoueur2;
     const carte = main[index];
     
+    console.log(`🎯 J${joueur} tente de poser : ${carte.valeur} (attendu : ${valeurDoublon})`);
+    
     if (carte.valeur === valeurDoublon) {
-        // SUCCÈS
+        // ✅ SUCCÈS - Carte correcte
         const carteDiv = document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`);
         
         if (carteDiv) {
@@ -612,20 +665,25 @@ function tenterDoublon(index, joueur) {
             defausse.push(carte);
             main.splice(index, 1);
             
-            updateMessage(`✅ Joueur ${joueur} a posé un ${carte.valeur} ! (${main.length} cartes)`);
-            afficherPlateau();
+            updateMessage(`✅ Joueur ${joueur} a posé un ${carte.valeur} ! (${main.length} cartes restantes)`);
+            
+            // Fermer et passer au tour suivant
+            finirPhaseReaction();
         }, 500);
         
     } else {
-        // ERREUR - Pénalité
+        // ❌ ERREUR - Mauvaise carte, pénalité +1 carte
         console.log(`❌ J${joueur} ERREUR ! Attendait ${valeurDoublon} mais avait ${carte.valeur}`);
         
         if (pioche.length > 0) {
             const cartePenalite = pioche.pop();
             main.push(cartePenalite);
-            updateMessage(`❌ Joueur ${joueur} : ERREUR ! Pénalité : +1 carte`);
+            console.log(`💥 Pénalité : J${joueur} reçoit ${cartePenalite.valeur}`);
         }
         
+        updateMessage(`❌ Joueur ${joueur} : ERREUR ! C'était un ${carte.valeur}. Pénalité : +1 carte`);
+        
+        // Animation de révélation de la carte erronée
         const carteDiv = document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`);
         if (carteDiv) {
             carteDiv.style.transition = 'all 0.2s ease';
@@ -641,20 +699,25 @@ function tenterDoublon(index, joueur) {
                     <div class="card-points">${carte.points} pts</div>
                 `;
                 
+                // Après 1.5 secondes, fermer et passer au tour suivant
                 setTimeout(() => {
-                    afficherPlateau();
-                }, 2000);
+                    finirPhaseReaction();
+                }, 1500);
             }, 300);
+        } else {
+            // Si pas d'élément visuel, fermer directement
+            setTimeout(() => finirPhaseReaction(), 500);
         }
     }
 }
 
 /**
- * Ferme la fenêtre doublon
+ * Termine la phase de réaction et passe au tour suivant
  */
-function fermerFenetreDoublon() {
-    console.log('🔒 Fermeture de la fenêtre doublon');
+function finirPhaseReaction() {
+    console.log('🔚 Fin de la phase de réaction');
     
+    // Nettoyer l'état
     fenetreDoublonActive = false;
     valeurDoublon = null;
     
@@ -665,15 +728,27 @@ function fermerFenetreDoublon() {
         timerDoublon = null;
     }
     
-    // TRANSITION : REACTION → WAITING_DRAW (prochain tour)
+    // Transition d'état
     etatTour = 'WAITING_DRAW';
     console.log(`📊 Transition : REACTION → WAITING_DRAW`);
     
     afficherPlateau();
     
+    // Passer au tour suivant
     if (!phaseInitiale && !partieTerminee) {
         finirTour();
     }
+}
+
+/**
+ * Ferme la fenêtre doublon
+ */
+/**
+ * Ferme la fenêtre doublon (appelé par le timer)
+ */
+function fermerFenetreDoublon() {
+    console.log('🔒 Fermeture de la fenêtre doublon (timer expiré)');
+    finirPhaseReaction();
 }
 
 /**
@@ -862,6 +937,7 @@ function regarderEtEchangerDame(index, joueur) {
 
 /**
  * Termine le tour et passe au joueur suivant
+ * MODIFIÉ : Changement direct sans popup
  */
 function finirTour() {
     if (cambioAnnonce && joueurActif !== joueurCambio) {
@@ -869,7 +945,22 @@ function finirTour() {
         return;
     }
     
-    afficherTransition(joueurActif === 1 ? 2 : 1);
+    // Changement direct de joueur (pas de popup)
+    joueurActif = joueurActif === 1 ? 2 : 1;
+    etatTour = 'WAITING_DRAW';
+    
+    console.log(`\n═══════════════════════════════════`);
+    console.log(`  🎮 TOUR DU JOUEUR ${joueurActif}`);
+    console.log(`  État : WAITING_DRAW`);
+    console.log(`═══════════════════════════════════`);
+    
+    afficherPlateau();
+    
+    if (cambioAnnonce && joueurActif !== joueurCambio) {
+        updateMessage(`⚠️ DERNIER TOUR ! Joueur ${joueurActif} : Piochez une carte`);
+    } else {
+        updateMessage(`Joueur ${joueurActif} : Piochez une carte depuis la pioche`);
+    }
 }
 
 /**
@@ -915,7 +1006,8 @@ function commencerTour() {
 }
 
 /**
- * Met à jour les indicateurs de tour
+ * Met à jour les indicateurs de tour et la bordure lumineuse
+ * MODIFIÉ : Ajout de la bordure blanche lumineuse sur le joueur actif
  */
 function mettreAJourIndicateursTour() {
     if (partieTerminee) return;
@@ -923,16 +1015,34 @@ function mettreAJourIndicateursTour() {
     const ind1 = document.getElementById('player1-indicator');
     const ind2 = document.getElementById('player2-indicator');
     
+    // Récupérer les sections des joueurs
+    const sectionJ1 = document.querySelector('.player-section.current-player');
+    const sectionJ2 = document.querySelector('.player-section.opponent');
+    
+    // Récupérer les mains des joueurs
+    const handJ1 = document.getElementById('player-hand');
+    const handJ2 = document.getElementById('player2-hand');
+    
     if (joueurActif === 1) {
+        // Indicateur texte
         ind1.textContent = '← Votre tour';
         ind1.classList.add('active');
         ind2.textContent = '';
         ind2.classList.remove('active');
+        
+        // Bordure lumineuse blanche
+        handJ1.classList.add('active-turn');
+        handJ2.classList.remove('active-turn');
     } else {
+        // Indicateur texte
         ind1.textContent = '';
         ind1.classList.remove('active');
         ind2.textContent = '← Votre tour';
         ind2.classList.add('active');
+        
+        // Bordure lumineuse blanche
+        handJ1.classList.remove('active-turn');
+        handJ2.classList.add('active-turn');
     }
 }
 
@@ -1058,7 +1168,7 @@ window.addEventListener('DOMContentLoaded', () => {
     initialiserJeu();
     
     document.getElementById('btn-nouvelle-partie').addEventListener('click', () => {
-        if (confirm('Nouvelle partie ?')) initialiserJeu();
+        initialiserJeu();
     });
     
     document.getElementById('btn-cambio').addEventListener('click', annoncerCambio);
