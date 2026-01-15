@@ -1,5 +1,6 @@
 // ============================================
 // CAMBIO - MULTIJOUEUR LOCAL (2 JOUEURS)
+// VERSION CORRIGÉE - RÈGLES STRICTES
 // ============================================
 
 const COULEURS = ['coeur', 'carreau', 'trefle', 'pique'];
@@ -18,16 +19,26 @@ let cartesVuesJ2 = [];
 let peekCountJ1 = 0;
 let peekCountJ2 = 0;
 
+// ============================================
+// MACHINE À ÉTATS DU TOUR (CORRIGÉE)
+// ============================================
+// WAITING_DRAW    : Début du tour, SEULE la pioche est cliquable
+// CARD_DRAWN      : Carte piochée affichée, choix Échanger/Défausser
+// CHOOSING_CARD   : Mode échange actif, joueur clique sur sa carte
+// SPECIAL_EFFECT  : Effet spécial en cours (8-9-10, Valet, Dame)
+// REACTION        : Phase doublon active (2 secondes)
+// ============================================
+let etatTour = 'WAITING_DRAW';
+
 // État de la pioche en cours
 let cartePiochee = null;
-let sourceCartePiochee = null;
 let enAttenteAction = false;
 let effetSpecialActif = null;
 
 // État du Cambio
 let cambioAnnonce = false;
 let joueurCambio = null;
-let partieTerminee = false; // NOUVEAU : Pour garder les cartes affichées
+let partieTerminee = false;
 
 // État des doublons
 let fenetreDoublonActive = false;
@@ -75,22 +86,19 @@ function melangerDeck(deck) {
 
 /**
  * Distribue les cartes aux 2 joueurs
- * NOUVEAU : Pas de carte dans la défausse au début
  */
 function distribuerCartes() {
     mainJoueur1 = [];
     mainJoueur2 = [];
-    defausse = []; // Défausse vide au début
+    defausse = [];
     pioche = [...deck];
     
-    // 4 cartes pour chaque joueur
     for (let i = 0; i < 4; i++) {
         mainJoueur1.push(pioche.pop());
         mainJoueur2.push(pioche.pop());
     }
     
-    // PAS de carte dans la défausse
-    console.log(`🎴 Distribution : J1 = ${mainJoueur1.length}, J2 = ${mainJoueur2.length}, Pioche = ${pioche.length}, Défausse = ${defausse.length}`);
+    console.log(`🎴 Distribution : J1 = ${mainJoueur1.length}, J2 = ${mainJoueur2.length}, Pioche = ${pioche.length}`);
 }
 
 /**
@@ -145,6 +153,9 @@ function afficherPlateau() {
     afficherCentrale();
     calculerEtAfficherScores();
     mettreAJourIndicateursTour();
+    
+    // DEBUG : Afficher l'état actuel
+    console.log(`📊 État actuel : ${etatTour} | Joueur actif : ${joueurActif}`);
 }
 
 /**
@@ -153,17 +164,14 @@ function afficherPlateau() {
 function afficherMainJoueur(joueur) {
     const handDiv = joueur === 1 ? document.getElementById('player-hand') : document.getElementById('player2-hand');
     const main = joueur === 1 ? mainJoueur1 : mainJoueur2;
-    const cartesVues = joueur === 1 ? cartesVuesJ1 : cartesVuesJ2;
     const peekCount = joueur === 1 ? peekCountJ1 : peekCountJ2;
     
     handDiv.innerHTML = '';
     
     main.forEach((carte, index) => {
-        // NOUVEAU : Si la partie est terminée, afficher les cartes face visible
         const faceVisible = partieTerminee;
         const carteDiv = afficherCarte(carte, index, faceVisible, joueur);
         
-        // Si partie terminée, ne pas ajouter d'événements
         if (partieTerminee) {
             handDiv.appendChild(carteDiv);
             return;
@@ -175,12 +183,12 @@ function afficherMainJoueur(joueur) {
             carteDiv.addEventListener('click', () => gererPeek(index, joueur));
         }
         // Fenêtre doublon active : tous les joueurs peuvent cliquer
-        else if (fenetreDoublonActive) {
+        else if (fenetreDoublonActive && etatTour === 'REACTION') {
             carteDiv.classList.add('doublon-clickable');
             carteDiv.addEventListener('click', () => tenterDoublon(index, joueur));
         }
         // Effets spéciaux
-        else if (effetSpecialActif && !phaseInitiale) {
+        else if (effetSpecialActif && etatTour === 'SPECIAL_EFFECT') {
             if (effetSpecialActif.type === 'regard' && joueur === joueurActif) {
                 carteDiv.classList.add('selectable');
                 carteDiv.addEventListener('click', () => regarderCarte(index, joueur));
@@ -200,8 +208,8 @@ function afficherMainJoueur(joueur) {
                 }
             }
         }
-        // Échange normal
-        else if (enAttenteAction && cartePiochee && joueur === joueurActif) {
+        // ÉTAT CHOOSING_CARD : Échange après pioche
+        else if (etatTour === 'CHOOSING_CARD' && cartePiochee && joueur === joueurActif) {
             carteDiv.classList.add('exchangeable');
             carteDiv.addEventListener('click', () => echangerCarte(index));
         }
@@ -212,42 +220,54 @@ function afficherMainJoueur(joueur) {
 
 /**
  * Affiche la zone centrale (pioche/défausse)
+ * CORRIGÉ : Contrôle strict selon l'état du tour
  */
 function afficherCentrale() {
-    // Défausse
+    // ============================================
+    // DÉFAUSSE - JAMAIS CLIQUABLE POUR PIOCHER
+    // ============================================
     const defausseDiv = document.getElementById('defausse');
     defausseDiv.innerHTML = '';
+    
     if (defausse.length > 0) {
         const carteDefausse = afficherCarte(defausse[defausse.length - 1], -1, true);
-        
-        // NOUVEAU : Ne pas permettre de piocher si partie terminée
-        if (!phaseInitiale && !enAttenteAction && !effetSpecialActif && !fenetreDoublonActive && !partieTerminee) {
-            carteDefausse.classList.add('piochable');
-            carteDefausse.addEventListener('click', piocherDefausse);
-        }
-        
+        // ❌ PAS D'ÉVÉNEMENT CLICK - La défausse n'est JAMAIS une source de pioche
+        // Elle sert uniquement à recevoir les cartes défaussées
         defausseDiv.appendChild(carteDefausse);
     } else {
-        // Défausse vide : afficher un placeholder
         const placeholder = document.createElement('div');
         placeholder.className = 'card defausse-vide';
         placeholder.textContent = 'VIDE';
-        placeholder.style.cssText = 'display:flex;align-items:center;justify-content:center;font-size:1.2em;color:#666;border:2px dashed #666;';
+        placeholder.style.cssText = 'display:flex;align-items:center;justify-content:center;font-size:1.2em;color:#666;border:2px dashed #666;background:rgba(255,255,255,0.1);';
         defausseDiv.appendChild(placeholder);
     }
     
-    // Pioche
+    // ============================================
+    // PIOCHE - CLIQUABLE UNIQUEMENT EN WAITING_DRAW
+    // ============================================
     const piocheDiv = document.getElementById('pioche');
     piocheDiv.innerHTML = '';
+    
     if (pioche.length > 0) {
         const carteDos = document.createElement('div');
         carteDos.className = 'card card-back';
         carteDos.innerHTML = '<div class="card-pattern"></div>';
         
-        // NOUVEAU : Ne pas permettre de piocher si partie terminée
-        if (!phaseInitiale && !enAttenteAction && !effetSpecialActif && !fenetreDoublonActive && !partieTerminee) {
+        // ✅ La pioche n'est cliquable QUE si :
+        // - Pas en phase initiale
+        // - État = WAITING_DRAW (et UNIQUEMENT cet état)
+        // - Partie pas terminée
+        const piocheCliquable = !phaseInitiale && 
+                               etatTour === 'WAITING_DRAW' && 
+                               !partieTerminee;
+        
+        if (piocheCliquable) {
             carteDos.classList.add('piochable');
             carteDos.addEventListener('click', piocherPioche);
+            console.log('✅ Pioche ACTIVÉE (état: WAITING_DRAW)');
+        } else {
+            carteDos.classList.add('disabled');
+            console.log(`🔒 Pioche DÉSACTIVÉE (état: ${etatTour})`);
         }
         
         piocheDiv.appendChild(carteDos);
@@ -312,8 +332,15 @@ function changerJoueurInitial() {
         setTimeout(() => {
             phaseInitiale = false;
             joueurActif = 1;
+            etatTour = 'WAITING_DRAW';
+            
+            console.log('═══════════════════════════════════');
+            console.log('  🎮 DÉBUT DE LA PARTIE           ');
+            console.log('  État initial : WAITING_DRAW     ');
+            console.log('═══════════════════════════════════');
+            
             afficherPlateau();
-            updateMessage(`Joueur 1 : Piochez une carte pour commencer`);
+            updateMessage(`Joueur 1 : Piochez une carte depuis la pioche`);
             document.getElementById('btn-cambio').style.display = 'inline-block';
         }, 3500);
     } else if (joueurActif === 1 && peekCountJ1 >= 2) {
@@ -325,41 +352,44 @@ function changerJoueurInitial() {
 
 /**
  * Pioche dans la pioche
+ * CORRIGÉ : Vérifie strictement l'état
  */
 function piocherPioche() {
+    // ✅ VÉRIFICATION STRICTE DE L'ÉTAT
+    if (etatTour !== 'WAITING_DRAW') {
+        console.log(`❌ BLOQUÉ : Tentative de pioche en état ${etatTour}`);
+        return;
+    }
+    
     if (pioche.length === 0) {
         updateMessage("La pioche est vide !");
         return;
     }
     
+    // Piocher la carte
     cartePiochee = pioche.pop();
-    sourceCartePiochee = 'pioche';
+    
+    // TRANSITION D'ÉTAT : WAITING_DRAW → CARD_DRAWN
+    etatTour = 'CARD_DRAWN';
     enAttenteAction = true;
     
     console.log(`🎴 J${joueurActif} pioche : ${cartePiochee.valeur} de ${cartePiochee.couleur}`);
+    console.log(`📊 Transition : WAITING_DRAW → CARD_DRAWN`);
+    
     afficherCartePiochee();
     afficherPlateau();
 }
 
 /**
- * Pioche dans la défausse
- */
-function piocherDefausse() {
-    if (defausse.length === 0) return;
-    
-    cartePiochee = defausse.pop();
-    sourceCartePiochee = 'defausse';
-    enAttenteAction = true;
-    
-    console.log(`🗑️ J${joueurActif} prend de la défausse : ${cartePiochee.valeur}`);
-    afficherCartePiochee();
-    afficherPlateau();
-}
-
-/**
- * Affiche la carte piochée
+ * Affiche la carte piochée avec les options
  */
 function afficherCartePiochee() {
+    // Vérifier qu'on est dans le bon état
+    if (etatTour !== 'CARD_DRAWN') {
+        console.log(`❌ Impossible d'afficher la carte piochée en état ${etatTour}`);
+        return;
+    }
+    
     const centerArea = document.querySelector('.center-area');
     
     let piocheeContainer = document.getElementById('carte-piochee-container');
@@ -379,46 +409,55 @@ function afficherCartePiochee() {
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'carte-piochee-actions';
     
+    // Bouton Échanger
     const btnEchanger = document.createElement('button');
     btnEchanger.className = 'btn btn-exchange';
-    btnEchanger.textContent = '🔄 Échanger';
+    btnEchanger.textContent = '🔄 Échanger avec une carte';
     btnEchanger.onclick = activerModeEchange;
-    
     actionsDiv.appendChild(btnEchanger);
     
-    // RÈGLE : On ne peut pas défausser une carte qui vient de la défausse
-    if (sourceCartePiochee !== 'defausse') {
-        const btnDefausser = document.createElement('button');
-        btnDefausser.className = 'btn btn-discard';
-        btnDefausser.textContent = '🗑️ Défausser';
-        btnDefausser.onclick = defausserCartePiochee;
-        actionsDiv.appendChild(btnDefausser);
-    }
+    // Bouton Défausser
+    const btnDefausser = document.createElement('button');
+    btnDefausser.className = 'btn btn-discard';
+    btnDefausser.textContent = '🗑️ Défausser cette carte';
+    btnDefausser.onclick = defausserCartePiochee;
+    actionsDiv.appendChild(btnDefausser);
     
     piocheeContainer.appendChild(actionsDiv);
     
-    if (sourceCartePiochee === 'defausse') {
-        updateMessage(`Joueur ${joueurActif} : Vous devez échanger cette carte (impossible de défausser une carte de la défausse)`);
-    } else {
-        updateMessage(`Joueur ${joueurActif} : Choisissez Échanger ou Défausser`);
-    }
+    updateMessage(`Joueur ${joueurActif} : Choisissez une action - Échanger OU Défausser`);
 }
 
 /**
  * Active le mode échange
+ * TRANSITION : CARD_DRAWN → CHOOSING_CARD
  */
 function activerModeEchange() {
+    if (etatTour !== 'CARD_DRAWN') {
+        console.log(`❌ Impossible d'activer l'échange en état ${etatTour}`);
+        return;
+    }
+    
+    // TRANSITION D'ÉTAT
+    etatTour = 'CHOOSING_CARD';
+    console.log(`📊 Transition : CARD_DRAWN → CHOOSING_CARD`);
+    
     updateMessage(`Joueur ${joueurActif} : Cliquez sur une de vos cartes pour l'échanger`);
     afficherPlateau();
 }
 
 /**
- * Échange la carte piochée avec animation
+ * Échange la carte piochée
  */
 function echangerCarte(index) {
+    if (etatTour !== 'CHOOSING_CARD') {
+        console.log(`❌ Impossible d'échanger en état ${etatTour}`);
+        return;
+    }
+    
     const piocheeContainer = document.getElementById('carte-piochee-container');
     
-    // ANIMATION : Déplacer visuellement la carte vers la main
+    // Animation
     if (piocheeContainer) {
         const carteElement = piocheeContainer.querySelector('.carte-piochee');
         const targetCard = document.querySelector(`[data-joueur="${joueurActif}"][data-index="${index}"]`);
@@ -436,31 +475,38 @@ function echangerCarte(index) {
         }
     }
     
-    // Attendre la fin de l'animation
     setTimeout(() => {
         const main = getMainActive();
         const carteRemplacee = main[index];
         main[index] = cartePiochee;
         defausse.push(carteRemplacee);
         
-        console.log(`🔄 J${joueurActif} échange : ${cartePiochee.valeur} remplace ${carteRemplacee.valeur}`);
+        console.log(`🔄 J${joueurActif} échange : ${cartePiochee.valeur} ↔ ${carteRemplacee.valeur}`);
         
         document.getElementById('carte-piochee-container')?.remove();
         cartePiochee = null;
         enAttenteAction = false;
         
-        // Activer la fenêtre doublon INVISIBLE après l'échange
+        // TRANSITION : CHOOSING_CARD → REACTION
+        etatTour = 'REACTION';
+        console.log(`📊 Transition : CHOOSING_CARD → REACTION`);
+        
         activerFenetreDoublon(carteRemplacee.valeur);
     }, 500);
 }
 
 /**
- * Défausse la carte piochée avec animation
+ * Défausse la carte piochée
  */
 function defausserCartePiochee() {
+    if (etatTour !== 'CARD_DRAWN') {
+        console.log(`❌ Impossible de défausser en état ${etatTour}`);
+        return;
+    }
+    
     const piocheeContainer = document.getElementById('carte-piochee-container');
     
-    // ANIMATION : Déplacer visuellement la carte vers la défausse
+    // Animation
     if (piocheeContainer) {
         const carteElement = piocheeContainer.querySelector('.carte-piochee');
         if (carteElement) {
@@ -470,7 +516,6 @@ function defausserCartePiochee() {
         }
     }
     
-    // Attendre la fin de l'animation avant de continuer
     setTimeout(() => {
         defausse.push(cartePiochee);
         console.log(`🗑️ J${joueurActif} défausse : ${cartePiochee.valeur}`);
@@ -484,74 +529,74 @@ function defausserCartePiochee() {
         
         // Vérifier effets spéciaux
         if (['8', '9', '10'].includes(valeur)) {
+            etatTour = 'SPECIAL_EFFECT';
+            console.log(`📊 Transition : CARD_DRAWN → SPECIAL_EFFECT (regard)`);
             activerEffetRegard();
         } else if (valeur === 'Valet') {
+            etatTour = 'SPECIAL_EFFECT';
+            console.log(`📊 Transition : CARD_DRAWN → SPECIAL_EFFECT (valet)`);
             activerEffetValet();
         } else if (valeur === 'Dame') {
+            etatTour = 'SPECIAL_EFFECT';
+            console.log(`📊 Transition : CARD_DRAWN → SPECIAL_EFFECT (dame)`);
             activerEffetDame();
         } else {
-            // Activer la fenêtre doublon INVISIBLE
+            // Pas d'effet spécial → Phase de réaction
+            etatTour = 'REACTION';
+            console.log(`📊 Transition : CARD_DRAWN → REACTION`);
             activerFenetreDoublon(carteDefaussee.valeur);
         }
-    }, 500); // Durée de l'animation
+    }, 500);
 }
 
 /**
- * REFONTE : Active la fenêtre doublon (INVISIBLE, 2 secondes)
+ * Active la fenêtre doublon (2 secondes, invisible)
  */
 function activerFenetreDoublon(valeur) {
-    // SÉCURITÉ : Ne pas activer si pas de valeur ou si partie terminée
     if (!valeur || partieTerminee) {
         finirTour();
         return;
     }
     
-    console.log(`⚡ Activation fenêtre doublon INVISIBLE pour : ${valeur}`);
+    console.log(`⚡ Activation fenêtre doublon pour : ${valeur}`);
     
     fenetreDoublonActive = true;
     valeurDoublon = valeur;
     
-    // Message discret avec effet visuel subtil
-    updateMessage(`💨 Doublons possibles ! Soyez rapide...`);
+    updateMessage(`💨 Doublons possibles ! Carte : ${valeur} - Soyez rapide (2 secondes)...`);
     document.getElementById('game-message').classList.add('doublon-actif');
     
-    // Afficher le plateau avec les cartes cliquables (effet visuel léger)
     afficherPlateau();
     
-    // CORRECTION : S'assurer que le timer précédent est annulé
     if (timerDoublon) {
         clearTimeout(timerDoublon);
     }
     
-    // Timer INVISIBLE de 2 secondes (pas de countdown affiché)
     timerDoublon = setTimeout(() => {
-        console.log('⏰ Fenêtre doublon terminée (invisible)');
+        console.log('⏰ Fenêtre doublon terminée');
         fermerFenetreDoublon();
-    }, 2000); // 2 secondes au lieu de 3
+    }, 2000);
 }
 
 /**
- * REFONTE : Tente de poser un doublon
+ * Tente de poser un doublon
  */
 function tenterDoublon(index, joueur) {
-    if (!fenetreDoublonActive) return;
+    if (!fenetreDoublonActive || etatTour !== 'REACTION') return;
     
-    // Si CAMBIO a été annoncé, seul l'adversaire peut poser des doublons
     if (cambioAnnonce && joueur === joueurCambio) {
-        updateMessage(`❌ Joueur ${joueur} : Vous avez annoncé CAMBIO, vous ne pouvez plus rien faire !`);
+        updateMessage(`❌ Joueur ${joueur} : Vous avez annoncé CAMBIO !`);
         return;
     }
     
     const main = joueur === 1 ? mainJoueur1 : mainJoueur2;
     const carte = main[index];
     
-    // Vérifier si c'est la bonne valeur
     if (carte.valeur === valeurDoublon) {
-        // SUCCÈS : Animation de la carte vers la défausse
+        // SUCCÈS
         const carteDiv = document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`);
         
         if (carteDiv) {
-            // Flash vert de succès
             carteDiv.style.transition = 'all 0.3s ease';
             carteDiv.style.boxShadow = '0 0 40px rgba(0, 255, 0, 1)';
             carteDiv.style.transform = 'scale(1.2)';
@@ -567,22 +612,20 @@ function tenterDoublon(index, joueur) {
             defausse.push(carte);
             main.splice(index, 1);
             
-            updateMessage(`✅ Joueur ${joueur} a posé un ${carte.valeur} ! (${main.length} cartes restantes)`);
+            updateMessage(`✅ Joueur ${joueur} a posé un ${carte.valeur} ! (${main.length} cartes)`);
             afficherPlateau();
         }, 500);
         
     } else {
-        // ERREUR : Pénalité +1 carte avec animation
+        // ERREUR - Pénalité
         console.log(`❌ J${joueur} ERREUR ! Attendait ${valeurDoublon} mais avait ${carte.valeur}`);
         
         if (pioche.length > 0) {
             const cartePenalite = pioche.pop();
             main.push(cartePenalite);
-            updateMessage(`❌ Joueur ${joueur} : ERREUR ! Pénalité : +1 carte (maintenant ${main.length} cartes)`);
-            console.log(`💥 Pénalité : J${joueur} pioche ${cartePenalite.valeur}`);
+            updateMessage(`❌ Joueur ${joueur} : ERREUR ! Pénalité : +1 carte`);
         }
         
-        // Révéler la carte erronnée avec flash rouge
         const carteDiv = document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`);
         if (carteDiv) {
             carteDiv.style.transition = 'all 0.2s ease';
@@ -607,15 +650,14 @@ function tenterDoublon(index, joueur) {
 }
 
 /**
- * REFONTE : Ferme la fenêtre doublon (sans countdown à supprimer)
+ * Ferme la fenêtre doublon
  */
 function fermerFenetreDoublon() {
-    console.log('🔒 Fermeture de la fenêtre doublon invisible');
+    console.log('🔒 Fermeture de la fenêtre doublon');
     
     fenetreDoublonActive = false;
     valeurDoublon = null;
     
-    // Retirer l'effet visuel du message
     document.getElementById('game-message').classList.remove('doublon-actif');
     
     if (timerDoublon) {
@@ -623,9 +665,12 @@ function fermerFenetreDoublon() {
         timerDoublon = null;
     }
     
+    // TRANSITION : REACTION → WAITING_DRAW (prochain tour)
+    etatTour = 'WAITING_DRAW';
+    console.log(`📊 Transition : REACTION → WAITING_DRAW`);
+    
     afficherPlateau();
     
-    // Ne pas finir le tour si on est en phase initiale ou si la partie est terminée
     if (!phaseInitiale && !partieTerminee) {
         finirTour();
     }
@@ -641,7 +686,7 @@ function activerEffetRegard() {
 }
 
 function regarderCarte(index, joueur) {
-    if (joueur !== joueurActif) return;
+    if (joueur !== joueurActif || etatTour !== 'SPECIAL_EFFECT') return;
     
     const main = getMainActive();
     const carte = main[index];
@@ -662,10 +707,13 @@ function regarderCarte(index, joueur) {
         setTimeout(() => {
             effetSpecialActif = null;
             
-            // NOUVEAU : Vérifier si on peut activer doublon après l'effet
+            etatTour = 'REACTION';
+            console.log(`📊 Transition : SPECIAL_EFFECT → REACTION`);
+            
             if (defausse.length > 0) {
                 activerFenetreDoublon(defausse[defausse.length - 1].valeur);
             } else {
+                etatTour = 'WAITING_DRAW';
                 finirTour();
             }
         }, 300);
@@ -673,15 +721,17 @@ function regarderCarte(index, joueur) {
 }
 
 /**
- * Effet Valet : Échanger 2 cartes SANS LES REGARDER
+ * Effet Valet : Échanger 2 cartes sans les regarder
  */
 function activerEffetValet() {
     effetSpecialActif = { type: 'valet', selection: [] };
-    updateMessage(`🃏 Joueur ${joueurActif} : Sélectionnez 2 cartes à échanger SANS LES REGARDER`);
+    updateMessage(`🃏 Joueur ${joueurActif} : Sélectionnez 2 cartes à échanger (sans les regarder)`);
     afficherPlateau();
 }
 
 function selectionnerPourValet(index, joueur) {
+    if (etatTour !== 'SPECIAL_EFFECT') return;
+    
     const selection = effetSpecialActif.selection;
     const key = `${joueur}-${index}`;
     
@@ -705,11 +755,16 @@ function selectionnerPourValet(index, joueur) {
         
         effetSpecialActif = null;
         
-        // NOUVEAU : Activer doublon après Valet
+        etatTour = 'REACTION';
+        console.log(`📊 Transition : SPECIAL_EFFECT → REACTION`);
+        
         if (defausse.length > 0) {
             setTimeout(() => activerFenetreDoublon(defausse[defausse.length - 1].valeur), 500);
         } else {
-            setTimeout(() => finirTour(), 500);
+            setTimeout(() => {
+                etatTour = 'WAITING_DRAW';
+                finirTour();
+            }, 500);
         }
     } else {
         updateMessage(`🃏 Sélectionnez encore ${2 - selection.length} carte(s)`);
@@ -717,7 +772,7 @@ function selectionnerPourValet(index, joueur) {
 }
 
 /**
- * Effet Dame : Regarder et échanger une carte
+ * Effet Dame : Regarder et échanger une carte adverse
  */
 function activerEffetDame() {
     effetSpecialActif = { type: 'dame', etape: 1, carteAdverseIndex: null, carteAdverseInfos: null };
@@ -726,7 +781,7 @@ function activerEffetDame() {
 }
 
 function regarderEtEchangerDame(index, joueur) {
-    if (!effetSpecialActif || effetSpecialActif.type !== 'dame') return;
+    if (!effetSpecialActif || effetSpecialActif.type !== 'dame' || etatTour !== 'SPECIAL_EFFECT') return;
     
     if (effetSpecialActif.etape === 1) {
         const main = getMainAdverse();
@@ -791,10 +846,13 @@ function regarderEtEchangerDame(index, joueur) {
                 
                 effetSpecialActif = null;
                 
-                // NOUVEAU : Activer doublon après Dame
+                etatTour = 'REACTION';
+                console.log(`📊 Transition : SPECIAL_EFFECT → REACTION`);
+                
                 if (defausse.length > 0) {
                     activerFenetreDoublon(defausse[defausse.length - 1].valeur);
                 } else {
+                    etatTour = 'WAITING_DRAW';
                     finirTour();
                 }
             }, 2000);
@@ -806,14 +864,11 @@ function regarderEtEchangerDame(index, joueur) {
  * Termine le tour et passe au joueur suivant
  */
 function finirTour() {
-    // Si CAMBIO a été annoncé et que c'est le tour de l'adversaire qui vient de se terminer
     if (cambioAnnonce && joueurActif !== joueurCambio) {
-        // L'adversaire a terminé son dernier tour → Révéler
         revelerCartes();
         return;
     }
     
-    // Sinon, passer au joueur suivant normalement
     afficherTransition(joueurActif === 1 ? 2 : 1);
 }
 
@@ -827,7 +882,6 @@ function afficherTransition(prochainJoueur, message = null) {
     
     title.textContent = `Au tour du Joueur ${prochainJoueur}`;
     
-    // Si CAMBIO a été annoncé et que c'est le tour de l'adversaire
     if (cambioAnnonce && prochainJoueur !== joueurCambio) {
         msg.textContent = `⚠️ DERNIER TOUR ! Joueur ${joueurCambio} a annoncé CAMBIO !`;
     } else {
@@ -844,13 +898,19 @@ function commencerTour() {
     const transition = document.getElementById('turn-transition');
     transition.style.display = 'none';
     
+    // IMPORTANT : Réinitialiser l'état au début du tour
+    etatTour = 'WAITING_DRAW';
+    console.log(`\n═══════════════════════════════════`);
+    console.log(`  🎮 TOUR DU JOUEUR ${joueurActif}`);
+    console.log(`  État : WAITING_DRAW`);
+    console.log(`═══════════════════════════════════`);
+    
     afficherPlateau();
     
-    // Message adapté si c'est le dernier tour
     if (cambioAnnonce && joueurActif !== joueurCambio) {
         updateMessage(`⚠️ DERNIER TOUR ! Joueur ${joueurActif} : Piochez une carte`);
     } else {
-        updateMessage(`Joueur ${joueurActif} : Piochez une carte`);
+        updateMessage(`Joueur ${joueurActif} : Piochez une carte depuis la pioche`);
     }
 }
 
@@ -858,7 +918,6 @@ function commencerTour() {
  * Met à jour les indicateurs de tour
  */
 function mettreAJourIndicateursTour() {
-    // NOUVEAU : Ne pas mettre à jour si la partie est terminée
     if (partieTerminee) return;
     
     const ind1 = document.getElementById('player1-indicator');
@@ -901,9 +960,8 @@ function annoncerCambio() {
     updateMessage(`🎺 Joueur ${joueurActif} annonce CAMBIO ! L'adversaire a un dernier tour !`);
     document.getElementById('btn-cambio').style.display = 'none';
     
-    console.log(`🎺 CAMBIO annoncé par J${joueurActif}. Dernier tour pour J${joueurActif === 1 ? 2 : 1}`);
+    console.log(`🎺 CAMBIO annoncé par J${joueurActif}`);
     
-    // Terminer le tour normalement et passer à l'adversaire
     finirTour();
 }
 
@@ -911,32 +969,27 @@ function annoncerCambio() {
  * Révèle toutes les cartes
  */
 function revelerCartes() {
-    partieTerminee = true; // NOUVEAU : Marquer la partie comme terminée
+    partieTerminee = true;
     
-    // NOUVEAU : Cacher le bouton CAMBIO
     document.getElementById('btn-cambio').style.display = 'none';
     
-    // Calculer les scores
     const score1 = mainJoueur1.reduce((t, c) => t + c.points, 0);
     const score2 = mainJoueur2.reduce((t, c) => t + c.points, 0);
     
-    // NOUVEAU : Afficher les scores à côté des noms
     const titre1 = document.querySelector('.player-section.current-player h2');
     const titre2 = document.querySelector('.player-section.opponent h2');
     
     titre1.innerHTML = `Joueur 1 : ${score1} points`;
     titre2.innerHTML = `Joueur 2 : ${score2} points`;
     
-    // Afficher les cartes face visible
     afficherPlateau();
     
-    // Déterminer le gagnant
     let message = `🏁 FIN DE PARTIE ! `;
     
     if (score1 < score2) {
-        message += joueurCambio === 1 ? '🏆 Joueur 1 GAGNE avec CAMBIO !' : '🏆 Joueur 1 GAGNE (Joueur 2 a perdu le pari CAMBIO) !';
+        message += joueurCambio === 1 ? '🏆 Joueur 1 GAGNE avec CAMBIO !' : '🏆 Joueur 1 GAGNE !';
     } else if (score2 < score1) {
-        message += joueurCambio === 2 ? '🏆 Joueur 2 GAGNE avec CAMBIO !' : '🏆 Joueur 2 GAGNE (Joueur 1 a perdu le pari CAMBIO) !';
+        message += joueurCambio === 2 ? '🏆 Joueur 2 GAGNE avec CAMBIO !' : '🏆 Joueur 2 GAGNE !';
     } else {
         message += '🤝 ÉGALITÉ !';
     }
@@ -957,9 +1010,10 @@ function updateMessage(message) {
  */
 function initialiserJeu() {
     console.clear();
-    console.log('═══════════════════════════════════');
-    console.log('  🎮 CAMBIO - 2 JOUEURS LOCAL    ');
-    console.log('═══════════════════════════════════\n');
+    console.log('═══════════════════════════════════════════');
+    console.log('  🎮 CAMBIO - VERSION CORRIGÉE            ');
+    console.log('  Machine à états stricte                 ');
+    console.log('═══════════════════════════════════════════\n');
     
     phaseInitiale = true;
     joueurActif = 1;
@@ -972,16 +1026,18 @@ function initialiserJeu() {
     effetSpecialActif = null;
     cambioAnnonce = false;
     joueurCambio = null;
-    partieTerminee = false; // NOUVEAU : Réinitialiser
+    partieTerminee = false;
     fenetreDoublonActive = false;
     valeurDoublon = null;
+    
+    // IMPORTANT : Initialiser l'état du tour
+    etatTour = 'WAITING_DRAW';
     
     deck = creerDeck();
     deck = melangerDeck(deck);
     distribuerCartes();
     afficherPlateau();
     
-    // NOUVEAU : Restaurer les titres originaux
     const titre1 = document.querySelector('.player-section.current-player h2');
     const titre2 = document.querySelector('.player-section.opponent h2');
     titre1.innerHTML = 'Joueur 1 <span id="player1-indicator" class="turn-indicator active">← Votre tour</span>';
@@ -1015,6 +1071,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 window.cambio = {
     initialiserJeu,
+    getEtatTour: () => etatTour,
     getMainJoueur1: () => mainJoueur1,
     getMainJoueur2: () => mainJoueur2,
     getPioche: () => pioche,
