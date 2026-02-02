@@ -26,7 +26,7 @@ let peekCountJ2 = 0;
 // CARD_DRAWN      : Carte piochée affichée, choix Échanger/Défausser
 // CHOOSING_CARD   : Mode échange actif, joueur clique sur sa carte
 // SPECIAL_EFFECT  : Effet spécial en cours (8-9-10, Valet, Dame)
-// REACTION        : Phase doublon active (2 secondes)
+// REACTION        : Phase doublon active (5 secondes)
 // ============================================
 let etatTour = 'WAITING_DRAW';
 
@@ -588,7 +588,7 @@ function defausserCartePiochee() {
  */
 function activerFenetreDoublon(valeur) {
     if (!valeur || partieTerminee) {
-        finirTour();
+        passerAuJoueurSuivant();
         return;
     }
     
@@ -605,12 +605,13 @@ function activerFenetreDoublon(valeur) {
     // Annuler tout timer précédent
     if (timerDoublon) {
         clearTimeout(timerDoublon);
+        timerDoublon = null;
     }
     
     // Timer de 5 secondes - fin automatique si personne ne joue
     timerDoublon = setTimeout(() => {
         console.log('⏰ Fenêtre doublon expirée (5 secondes)');
-        fermerFenetreDoublon();
+        fermerFenetreDoublonEtPasserTour();
     }, 5000);
 }
 
@@ -667,8 +668,8 @@ function tenterDoublon(index, joueur) {
             
             updateMessage(`✅ Joueur ${joueur} a posé un ${carte.valeur} ! (${main.length} cartes restantes)`);
             
-            // Fermer et passer au tour suivant
-            finirPhaseReaction();
+            // Nettoyer et passer au tour suivant
+            nettoyerPhaseReactionEtPasserTour();
         }, 500);
         
     } else {
@@ -701,23 +702,24 @@ function tenterDoublon(index, joueur) {
                 
                 // Après 1.5 secondes, fermer et passer au tour suivant
                 setTimeout(() => {
-                    finirPhaseReaction();
+                    nettoyerPhaseReactionEtPasserTour();
                 }, 1500);
             }, 300);
         } else {
             // Si pas d'élément visuel, fermer directement
-            setTimeout(() => finirPhaseReaction(), 500);
+            setTimeout(() => nettoyerPhaseReactionEtPasserTour(), 500);
         }
     }
 }
 
 /**
- * Termine la phase de réaction et passe au tour suivant
+ * Nettoie la phase de réaction et passe au joueur suivant
+ * NOUVELLE FONCTION : Centralise le nettoyage + changement de tour
  */
-function finirPhaseReaction() {
-    console.log('🔚 Fin de la phase de réaction');
+function nettoyerPhaseReactionEtPasserTour() {
+    console.log('🔚 Nettoyage de la phase de réaction et passage au tour suivant');
     
-    // Nettoyer l'état
+    // Nettoyer l'état de la phase doublon
     fenetreDoublonActive = false;
     valeurDoublon = null;
     
@@ -728,27 +730,46 @@ function finirPhaseReaction() {
         timerDoublon = null;
     }
     
-    // Transition d'état
-    etatTour = 'WAITING_DRAW';
-    console.log(`📊 Transition : REACTION → WAITING_DRAW`);
-    
-    afficherPlateau();
-    
-    // Passer au tour suivant
-    if (!phaseInitiale && !partieTerminee) {
-        finirTour();
-    }
+    // Passer au joueur suivant
+    passerAuJoueurSuivant();
 }
 
 /**
- * Ferme la fenêtre doublon
+ * Ferme la fenêtre doublon et passe au tour suivant (appelé par le timer)
+ * CORRIGÉ : Appelle directement passerAuJoueurSuivant
  */
+function fermerFenetreDoublonEtPasserTour() {
+    console.log('🔒 Fermeture de la fenêtre doublon (timer expiré) et passage au tour suivant');
+    nettoyerPhaseReactionEtPasserTour();
+}
+
 /**
- * Ferme la fenêtre doublon (appelé par le timer)
+ * Passe au joueur suivant
+ * NOUVELLE FONCTION : Gère proprement la transition de tour
  */
-function fermerFenetreDoublon() {
-    console.log('🔒 Fermeture de la fenêtre doublon (timer expiré)');
-    finirPhaseReaction();
+function passerAuJoueurSuivant() {
+    // Vérifier si la partie est terminée (CAMBIO)
+    if (cambioAnnonce && joueurActif !== joueurCambio) {
+        revelerCartes();
+        return;
+    }
+    
+    // Changement de joueur
+    joueurActif = joueurActif === 1 ? 2 : 1;
+    etatTour = 'WAITING_DRAW';
+    
+    console.log(`\n═══════════════════════════════════`);
+    console.log(`  🎮 TOUR DU JOUEUR ${joueurActif}`);
+    console.log(`  État : WAITING_DRAW`);
+    console.log(`═══════════════════════════════════`);
+    
+    afficherPlateau();
+    
+    if (cambioAnnonce && joueurActif !== joueurCambio) {
+        updateMessage(`⚠️ DERNIER TOUR ! Joueur ${joueurActif} : Piochez une carte`);
+    } else {
+        updateMessage(`Joueur ${joueurActif} : Piochez une carte depuis la pioche`);
+    }
 }
 
 /**
@@ -788,8 +809,7 @@ function regarderCarte(index, joueur) {
             if (defausse.length > 0) {
                 activerFenetreDoublon(defausse[defausse.length - 1].valeur);
             } else {
-                etatTour = 'WAITING_DRAW';
-                finirTour();
+                passerAuJoueurSuivant();
             }
         }, 300);
     }, 3000);
@@ -836,10 +856,7 @@ function selectionnerPourValet(index, joueur) {
         if (defausse.length > 0) {
             setTimeout(() => activerFenetreDoublon(defausse[defausse.length - 1].valeur), 500);
         } else {
-            setTimeout(() => {
-                etatTour = 'WAITING_DRAW';
-                finirTour();
-            }, 500);
+            setTimeout(() => passerAuJoueurSuivant(), 500);
         }
     } else {
         updateMessage(`🃏 Sélectionnez encore ${2 - selection.length} carte(s)`);
@@ -847,18 +864,78 @@ function selectionnerPourValet(index, joueur) {
 }
 
 /**
- * Effet Dame : Regarder et échanger une carte adverse
+ * Effet Dame : Regarder une carte adverse, puis choisir d'échanger ou non
+ * FLUX CORRIGÉ :
+ * 1. Joueur clique sur une carte adverse → elle se retourne (visible)
+ * 2. Après 2 secondes, la carte se retourne face cachée
+ * 3. Boutons "Oui, échanger" / "Non, passer" apparaissent
+ * 4. Si Oui → Joueur clique sur une de ses cartes (à l'aveugle) → échange
+ * 5. Si Non → Passe au timer doublon
  */
 function activerEffetDame() {
-    effetSpecialActif = { type: 'dame', etape: 1, carteAdverseIndex: null, carteAdverseInfos: null };
-    updateMessage(`👸 Joueur ${joueurActif} : Cliquez sur une carte de l'adversaire`);
+    effetSpecialActif = { 
+        type: 'dame', 
+        etape: 1,  // Étape 1 = choisir carte adverse à regarder
+        carteAdverseIndex: null, 
+        carteAdverseInfos: null 
+    };
+    updateMessage(`👸 Joueur ${joueurActif} : Cliquez sur une carte de l'adversaire pour la regarder`);
     afficherPlateau();
+}
+
+/**
+ * Affiche les boutons de choix pour la Dame (échanger ou passer)
+ */
+function afficherChoixDame() {
+    // Supprimer les anciens boutons s'ils existent
+    document.getElementById('dame-choix-container')?.remove();
+    
+    const container = document.createElement('div');
+    container.id = 'dame-choix-container';
+    container.className = 'dame-choix-container';
+    container.innerHTML = `
+        <div class="dame-choix-content">
+            <p>Carte adverse vue : <strong>${effetSpecialActif.carteAdverseInfos.valeur}</strong> (${effetSpecialActif.carteAdverseInfos.points} pts)</p>
+            <p>Voulez-vous échanger avec une de vos cartes ?</p>
+            <div class="dame-choix-buttons">
+                <button id="btn-dame-oui" class="btn btn-exchange">✅ Oui, échanger</button>
+                <button id="btn-dame-non" class="btn btn-discard">❌ Non, passer</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(container);
+    
+    // Événements des boutons
+    document.getElementById('btn-dame-oui').addEventListener('click', () => {
+        container.remove();
+        effetSpecialActif.etape = 2;  // Étape 2 = choisir sa carte pour l'échange
+        updateMessage(`👸 Joueur ${joueurActif} : Cliquez sur UNE de VOS cartes pour l'échanger (à l'aveugle)`);
+        afficherPlateau();
+    });
+    
+    document.getElementById('btn-dame-non').addEventListener('click', () => {
+        container.remove();
+        console.log(`👸 Dame : Joueur ${joueurActif} refuse l'échange`);
+        
+        effetSpecialActif = null;
+        
+        etatTour = 'REACTION';
+        console.log(`📊 Transition : SPECIAL_EFFECT → REACTION`);
+        
+        if (defausse.length > 0) {
+            activerFenetreDoublon(defausse[defausse.length - 1].valeur);
+        } else {
+            passerAuJoueurSuivant();
+        }
+    });
 }
 
 function regarderEtEchangerDame(index, joueur) {
     if (!effetSpecialActif || effetSpecialActif.type !== 'dame' || etatTour !== 'SPECIAL_EFFECT') return;
     
-    if (effetSpecialActif.etape === 1) {
+    // ÉTAPE 1 : Regarder une carte adverse
+    if (effetSpecialActif.etape === 1 && joueur !== joueurActif) {
         const main = getMainAdverse();
         const carte = main[index];
         const carteDiv = document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`);
@@ -866,6 +943,7 @@ function regarderEtEchangerDame(index, joueur) {
         effetSpecialActif.carteAdverseIndex = index;
         effetSpecialActif.carteAdverseInfos = carte;
         
+        // Retourner la carte pour la montrer
         carteDiv.classList.add('flipping');
         setTimeout(() => {
             carteDiv.className = `card card-front card-${carte.couleur}`;
@@ -875,92 +953,55 @@ function regarderEtEchangerDame(index, joueur) {
                 <div class="card-points">${carte.points} pts</div>
             `;
             
+            // Après 2 secondes, retourner la carte et afficher les boutons de choix
             setTimeout(() => {
                 carteDiv.classList.add('flipping');
                 setTimeout(() => {
                     carteDiv.className = 'card card-back';
                     carteDiv.innerHTML = '<div class="card-pattern"></div>';
                     
-                    effetSpecialActif.etape = 2;
-                    updateMessage(`👸 Carte adverse : ${carte.valeur} (${carte.points} pts). Choisissez UNE de VOS cartes`);
-                    afficherPlateau();
+                    // Afficher les boutons "Oui/Non"
+                    afficherChoixDame();
                 }, 300);
             }, 2000);
         }, 300);
     }
+    // ÉTAPE 2 : Choisir une de ses cartes pour l'échange (à l'aveugle)
     else if (effetSpecialActif.etape === 2 && joueur === joueurActif) {
         const main = getMainActive();
-        const maCarte = main[index];
-        const carteDiv = document.querySelector(`[data-joueur="${joueur}"][data-index="${index}"]`);
+        const mainAdv = getMainAdverse();
         
-        effetSpecialActif.maCarteIndex = index;
+        // Effectuer l'échange à l'aveugle (sans montrer la carte du joueur)
+        const maCarteIndex = index;
+        const carteAdvIndex = effetSpecialActif.carteAdverseIndex;
         
-        carteDiv.classList.add('flipping');
+        // Échange
+        [main[maCarteIndex], mainAdv[carteAdvIndex]] = [mainAdv[carteAdvIndex], main[maCarteIndex]];
+        
+        console.log(`👸 Dame : Échange effectué (à l'aveugle) - J${joueurActif}[${maCarteIndex}] ↔ Adversaire[${carteAdvIndex}]`);
+        updateMessage(`👸 Échange effectué !`);
+        
+        effetSpecialActif = null;
+        
+        // Petite pause puis passer au timer doublon
         setTimeout(() => {
-            carteDiv.className = `card card-front card-${maCarte.couleur}`;
-            carteDiv.innerHTML = `
-                <div class="card-value">${maCarte.valeur}</div>
-                <div class="card-suit suit-${maCarte.couleur}">${getSymboleCouleur(maCarte.couleur)}</div>
-                <div class="card-points">${maCarte.points} pts</div>
-            `;
+            etatTour = 'REACTION';
+            console.log(`📊 Transition : SPECIAL_EFFECT → REACTION`);
             
-            setTimeout(() => {
-                const carteAdv = effetSpecialActif.carteAdverseInfos;
-                const echanger = confirm(
-                    `Votre carte : ${maCarte.valeur} (${maCarte.points} pts)\n` +
-                    `Carte adverse : ${carteAdv.valeur} (${carteAdv.points} pts)\n\n` +
-                    `Échanger ?`
-                );
-                
-                if (echanger) {
-                    const mainAdv = getMainAdverse();
-                    [main[index], mainAdv[effetSpecialActif.carteAdverseIndex]] = 
-                    [mainAdv[effetSpecialActif.carteAdverseIndex], main[index]];
-                    console.log(`👸 Dame : Échange effectué`);
-                }
-                
-                effetSpecialActif = null;
-                
-                etatTour = 'REACTION';
-                console.log(`📊 Transition : SPECIAL_EFFECT → REACTION`);
-                
-                if (defausse.length > 0) {
-                    activerFenetreDoublon(defausse[defausse.length - 1].valeur);
-                } else {
-                    etatTour = 'WAITING_DRAW';
-                    finirTour();
-                }
-            }, 2000);
-        }, 300);
+            if (defausse.length > 0) {
+                activerFenetreDoublon(defausse[defausse.length - 1].valeur);
+            } else {
+                passerAuJoueurSuivant();
+            }
+        }, 500);
     }
 }
 
 /**
- * Termine le tour et passe au joueur suivant
- * MODIFIÉ : Changement direct sans popup
+ * Termine le tour et passe au joueur suivant (DEPRECATED - utiliser passerAuJoueurSuivant)
  */
 function finirTour() {
-    if (cambioAnnonce && joueurActif !== joueurCambio) {
-        revelerCartes();
-        return;
-    }
-    
-    // Changement direct de joueur (pas de popup)
-    joueurActif = joueurActif === 1 ? 2 : 1;
-    etatTour = 'WAITING_DRAW';
-    
-    console.log(`\n═══════════════════════════════════`);
-    console.log(`  🎮 TOUR DU JOUEUR ${joueurActif}`);
-    console.log(`  État : WAITING_DRAW`);
-    console.log(`═══════════════════════════════════`);
-    
-    afficherPlateau();
-    
-    if (cambioAnnonce && joueurActif !== joueurCambio) {
-        updateMessage(`⚠️ DERNIER TOUR ! Joueur ${joueurActif} : Piochez une carte`);
-    } else {
-        updateMessage(`Joueur ${joueurActif} : Piochez une carte depuis la pioche`);
-    }
+    passerAuJoueurSuivant();
 }
 
 /**
@@ -1008,6 +1049,7 @@ function commencerTour() {
 /**
  * Met à jour les indicateurs de tour et la bordure lumineuse
  * MODIFIÉ : Ajout de la bordure blanche lumineuse sur le joueur actif
+ * CORRIGÉ : Vérification que les éléments existent avant de les modifier
  */
 function mettreAJourIndicateursTour() {
     if (partieTerminee) return;
@@ -1015,34 +1057,38 @@ function mettreAJourIndicateursTour() {
     const ind1 = document.getElementById('player1-indicator');
     const ind2 = document.getElementById('player2-indicator');
     
-    // Récupérer les sections des joueurs
-    const sectionJ1 = document.querySelector('.player-section.current-player');
-    const sectionJ2 = document.querySelector('.player-section.opponent');
-    
     // Récupérer les mains des joueurs
     const handJ1 = document.getElementById('player-hand');
     const handJ2 = document.getElementById('player2-hand');
     
     if (joueurActif === 1) {
-        // Indicateur texte
-        ind1.textContent = '← Votre tour';
-        ind1.classList.add('active');
-        ind2.textContent = '';
-        ind2.classList.remove('active');
+        // Indicateur texte (vérifier que les éléments existent)
+        if (ind1) {
+            ind1.textContent = '← Votre tour';
+            ind1.classList.add('active');
+        }
+        if (ind2) {
+            ind2.textContent = '';
+            ind2.classList.remove('active');
+        }
         
         // Bordure lumineuse blanche
-        handJ1.classList.add('active-turn');
-        handJ2.classList.remove('active-turn');
+        if (handJ1) handJ1.classList.add('active-turn');
+        if (handJ2) handJ2.classList.remove('active-turn');
     } else {
-        // Indicateur texte
-        ind1.textContent = '';
-        ind1.classList.remove('active');
-        ind2.textContent = '← Votre tour';
-        ind2.classList.add('active');
+        // Indicateur texte (vérifier que les éléments existent)
+        if (ind1) {
+            ind1.textContent = '';
+            ind1.classList.remove('active');
+        }
+        if (ind2) {
+            ind2.textContent = '← Votre tour';
+            ind2.classList.add('active');
+        }
         
         // Bordure lumineuse blanche
-        handJ1.classList.remove('active-turn');
-        handJ2.classList.add('active-turn');
+        if (handJ1) handJ1.classList.remove('active-turn');
+        if (handJ2) handJ2.classList.add('active-turn');
     }
 }
 
@@ -1072,7 +1118,7 @@ function annoncerCambio() {
     
     console.log(`🎺 CAMBIO annoncé par J${joueurActif}`);
     
-    finirTour();
+    passerAuJoueurSuivant();
 }
 
 /**
@@ -1139,6 +1185,12 @@ function initialiserJeu() {
     partieTerminee = false;
     fenetreDoublonActive = false;
     valeurDoublon = null;
+    
+    // Nettoyer le timer s'il existe
+    if (timerDoublon) {
+        clearTimeout(timerDoublon);
+        timerDoublon = null;
+    }
     
     // IMPORTANT : Initialiser l'état du tour
     etatTour = 'WAITING_DRAW';
